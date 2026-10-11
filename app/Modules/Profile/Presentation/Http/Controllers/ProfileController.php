@@ -1,10 +1,14 @@
 <?php
 
-namespace App\Http\Controllers\Settings;
+namespace App\Modules\Profile\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Settings\ProfileDeleteRequest;
-use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Modules\Profile\Application\Commands\DeleteProfile;
+use App\Modules\Profile\Application\Commands\DeleteProfileHandler;
+use App\Modules\Profile\Application\Commands\UpdateProfile;
+use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
+use App\Modules\Profile\Presentation\Http\Requests\ProfileDeleteRequest;
+use App\Modules\Profile\Presentation\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,15 +32,9 @@ class ProfileController extends Controller
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(ProfileUpdateRequest $request, UpdateProfileHandler $updateProfile): RedirectResponse
     {
-        $request->user()->fill($request->validated());
-
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
-        }
-
-        $request->user()->save();
+        $updateProfile->handle(new UpdateProfile($request->user()->id, $request->validated('name'), $request->validated('email')));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 
@@ -46,13 +44,13 @@ class ProfileController extends Controller
     /**
      * Delete the user's profile.
      */
-    public function destroy(ProfileDeleteRequest $request): RedirectResponse
+    public function destroy(ProfileDeleteRequest $request, DeleteProfileHandler $deleteProfile): RedirectResponse
     {
         $user = $request->user();
 
         Auth::logout();
 
-        $user->delete();
+        $deleteProfile->handle(new DeleteProfile($user->id));
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
