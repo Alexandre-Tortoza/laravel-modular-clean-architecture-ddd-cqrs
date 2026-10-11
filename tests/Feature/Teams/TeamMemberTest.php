@@ -110,6 +110,22 @@ test('team member role cannot be set to owner', function () {
     expect($team->members()->where('user_id', $member->id)->first()->pivot->role->value)->toEqual(TeamRole::Member->value);
 });
 
+test('team owner cannot be demoted through the member endpoint', function () {
+    $owner = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+
+    $response = $this
+        ->actingAs($owner)
+        ->patch(route('teams.members.update', [$team, $owner]), [
+            'role' => TeamRole::Member->value,
+        ]);
+
+    $response->assertForbidden();
+
+    expect($team->members()->whereKey($owner->id)->first()->pivot->role)->toBe(TeamRole::Owner);
+});
+
 test('removed member current team is set to personal team', function () {
     $owner = User::factory()->create();
     $member = User::factory()->create();

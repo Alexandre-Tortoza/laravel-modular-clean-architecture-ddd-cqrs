@@ -3,6 +3,7 @@
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models;
 
 use App\Models\User;
+use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Factories\TeamInvitationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -92,7 +93,7 @@ class TeamInvitation extends Model
      */
     public function isExpired(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->isPast();
+        return $this->expires_at !== null && $this->expires_at->lessThanOrEqualTo(app(TeamClock::class)->now());
     }
 
     /**

@@ -4,32 +4,42 @@ namespace App\Modules\Teams\Application\Commands;
 
 use App\Modules\Teams\Application\Contracts\ManagesTeamInvitations;
 use App\Modules\Teams\Application\Contracts\RunsTeamTransactions;
+use App\Modules\Teams\Application\Contracts\SendsTeamInvitations;
+use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Data\InvitationResponseData;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
 use App\Modules\Teams\Application\Exceptions\TeamInvitationResponseRejected;
-use DateTimeImmutable;
 
 class TeamInvitationHandler
 {
-    public function __construct(private ManagesTeamInvitations $invitations, private RunsTeamTransactions $transactions) {}
+    public function __construct(
+        private ManagesTeamInvitations $invitations,
+        private RunsTeamTransactions $transactions,
+        private SendsTeamInvitations $sender,
+        private TeamClock $clock,
+    ) {}
 
     public function create(CreateTeamInvitation $command): TeamInvitationData
     {
-        return $this->transactions->run(fn (): TeamInvitationData => $this->invitations->create($command->teamId, $command->inviterId, $command->email, $command->role));
+        $invitation = $this->transactions->run(fn (): TeamInvitationData => $this->invitations->create($command->teamId, $command->inviterId, $command->email, $command->role));
+
+        $this->sender->send($invitation);
+
+        return $invitation;
     }
 
     public function cancel(CancelTeamInvitation $command): void
     {
-        $this->transactions->run(fn (): null => $this->invitations->cancel($command->teamId, $command->invitationId));
+        $this->transactions->run(fn (): null => $this->invitations->cancel($command->teamId, $command->actorId, $command->invitationId));
     }
 
-    public function accept(AcceptTeamInvitation $command): void
+    public function accept(AcceptTeamInvitation $command): string
     {
-        $this->transactions->run(function () use ($command): void {
+        return $this->transactions->run(function () use ($command): string {
             $invitation = $this->invitations->responseForUpdate($command->userId, $command->invitationId);
             $this->assertCanRespond($invitation);
 
-            $this->invitations->accept($invitation);
+            return $this->invitations->accept($invitation);
         });
     }
 
@@ -58,7 +68,7 @@ class TeamInvitationHandler
             throw new TeamInvitationResponseRejected('This invitation has already been accepted.');
         }
 
-        if ($invitation->expiresAt !== null && $invitation->expiresAt < new DateTimeImmutable) {
+        if ($invitation->expiresAt !== null && $invitation->expiresAt <= $this->clock->now()) {
             throw new TeamInvitationResponseRejected('This invitation has expired.');
         }
     }

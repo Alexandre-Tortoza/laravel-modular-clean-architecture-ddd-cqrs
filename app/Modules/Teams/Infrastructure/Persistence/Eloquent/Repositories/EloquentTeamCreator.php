@@ -12,18 +12,19 @@ class EloquentTeamCreator implements CreatesTeams
 {
     public function create(int $userId, string $name, bool $isPersonal): TeamData
     {
-        $user = User::query()->findOrFail($userId);
         $team = Team::query()->create([
             'name' => $name,
             'is_personal' => $isPersonal,
         ]);
+
+        $user = User::query()->lockForUpdate()->findOrFail($userId);
 
         $team->memberships()->create([
             'user_id' => $user->id,
             'role' => TeamRole::Owner,
         ]);
 
-        $user->switchTeam($team);
+        $user->update(['current_team_id' => $team->id]);
 
         return new TeamData(
             id: $team->id,

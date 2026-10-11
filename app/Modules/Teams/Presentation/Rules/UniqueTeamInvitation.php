@@ -2,6 +2,7 @@
 
 namespace App\Modules\Teams\Presentation\Rules;
 
+use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Closure;
@@ -10,7 +11,7 @@ use Illuminate\Translation\PotentiallyTranslatedString;
 
 class UniqueTeamInvitation implements ValidationRule
 {
-    public function __construct(protected Team $team)
+    public function __construct(protected Team $team, protected TeamClock $clock)
     {
         //
     }
@@ -39,7 +40,7 @@ class UniqueTeamInvitation implements ValidationRule
             ->whereNull('accepted_at')
             ->where(function ($query) {
                 $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', $this->clock->now());
             })
             ->exists();
 

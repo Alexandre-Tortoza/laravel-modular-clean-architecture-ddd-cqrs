@@ -10,6 +10,7 @@ readonly class InvitationResponseData
     public function __construct(
         public int $invitationId,
         public int $teamId,
+        public string $teamSlug,
         public int $userId,
         public string $recipientEmail,
         public string $userEmail,

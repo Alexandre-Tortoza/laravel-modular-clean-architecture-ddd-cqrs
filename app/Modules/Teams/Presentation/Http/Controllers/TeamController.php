@@ -79,7 +79,11 @@ class TeamController extends Controller
     {
         Gate::authorize('update', $team);
 
-        $team = $lifecycle->update(new UpdateTeam($team->id, $request->validated('name')));
+        try {
+            $team = $lifecycle->update(new UpdateTeam($request->user()->id, $team->id, $request->validated('name')));
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team updated.')]);
 

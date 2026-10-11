@@ -8,16 +8,17 @@ use App\Modules\Teams\Application\Commands\CancelTeamInvitation;
 use App\Modules\Teams\Application\Commands\CreateTeamInvitation;
 use App\Modules\Teams\Application\Commands\DeclineTeamInvitation;
 use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
+use App\Modules\Teams\Application\Exceptions\TeamInvitationCreationRejected;
 use App\Modules\Teams\Application\Exceptions\TeamInvitationResponseRejected;
+use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
-use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use App\Modules\Teams\Presentation\Http\Requests\CreateTeamInvitationRequest;
 use App\Modules\Teams\Presentation\Http\Requests\RespondToTeamInvitationRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -30,15 +31,18 @@ class TeamInvitationController extends Controller
     {
         Gate::authorize('inviteMember', $team);
 
-        $invitation = $handler->create(new CreateTeamInvitation(
-            teamId: $team->id,
-            inviterId: $request->user()->id,
-            email: $request->validated('email'),
-            role: TeamRole::from($request->validated('role')),
-        ));
-
-        Notification::route('mail', $invitation->email)
-            ->notify(new TeamInvitationNotification($invitation));
+        try {
+            $handler->create(new CreateTeamInvitation(
+                teamId: $team->id,
+                inviterId: $request->user()->id,
+                email: $request->validated('email'),
+                role: TeamRole::from($request->validated('role')),
+            ));
+        } catch (TeamInvitationCreationRejected $exception) {
+            throw ValidationException::withMessages(['email' => $exception->getMessage()]);
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation sent.')]);
 
@@ -48,13 +52,17 @@ class TeamInvitationController extends Controller
     /**
      * Cancel the specified invitation.
      */
-    public function destroy(Team $team, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
+    public function destroy(Request $request, Team $team, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
         abort_unless($invitation->team_id === $team->id, 404);
 
         Gate::authorize('cancelInvitation', $team);
 
-        $handler->cancel(new CancelTeamInvitation($team->id, $invitation->id));
+        try {
+            $handler->cancel(new CancelTeamInvitation($team->id, $request->user()->id, $invitation->id));
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation cancelled.')]);
 
@@ -67,14 +75,14 @@ class TeamInvitationController extends Controller
     public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
         try {
-            $handler->accept(new AcceptTeamInvitation($request->user()->id, $invitation->id));
+            $teamSlug = $handler->accept(new AcceptTeamInvitation($request->user()->id, $invitation->id));
         } catch (TeamInvitationResponseRejected $exception) {
             throw ValidationException::withMessages(['invitation' => $exception->getMessage()]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation accepted.')]);
 
-        return to_route('dashboard');
+        return to_route('dashboard', ['current_team' => $teamSlug]);
     }
 
     /**

@@ -13,6 +13,9 @@ interface ManagesTeams
 
     public function membershipForUpdate(int $teamId, int $userId): TeamMembershipData;
 
+    /** @return array{actor: TeamMembershipData, member: TeamMembershipData} */
+    public function membershipsForUpdate(int $teamId, int $actorId, int $userId): array;
+
     public function deletionForUpdate(int $teamId, int $userId): TeamDeletionData;
 
     public function setCurrentTeam(int $userId, ?int $teamId): void;

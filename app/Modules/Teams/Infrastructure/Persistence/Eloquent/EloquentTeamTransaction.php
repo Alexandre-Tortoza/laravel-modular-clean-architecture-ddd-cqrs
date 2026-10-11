@@ -16,6 +16,6 @@ class EloquentTeamTransaction implements RunsTeamTransactions
      */
     public function run(Closure $callback): mixed
     {
-        return DB::transaction($callback);
+        return DB::transaction($callback, attempts: 3);
     }
 }

@@ -5,6 +5,7 @@ use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -38,7 +39,10 @@ test('allows a member and switches to a team resolved from its slug', function (
     );
 
     expect($response->getContent())->toBe('next')
-        ->and($user->fresh()->current_team_id)->toBe($team->id);
+        ->and($user->fresh()->current_team_id)->toBe($team->id)
+        ->and($user->current_team_id)->toBe($team->id)
+        ->and($user->currentTeam->id)->toBe($team->id)
+        ->and(URL::getDefaultParameters()['current_team'])->toBe($team->slug);
 });
 
 test('allows a sufficient role without changing the current team for a team route parameter', function () {

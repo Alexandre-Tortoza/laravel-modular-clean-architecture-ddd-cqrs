@@ -6,7 +6,11 @@ use App\Modules\Teams\Application\Contracts\CreatesTeams;
 use App\Modules\Teams\Application\Contracts\ManagesTeamInvitations;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
 use App\Modules\Teams\Application\Contracts\RunsTeamTransactions;
+use App\Modules\Teams\Application\Contracts\SendsTeamInvitations;
+use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Infrastructure\Clock\SystemTeamClock;
+use App\Modules\Teams\Infrastructure\Notifications\TeamInvitationSender;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\EloquentTeamTransaction;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Queries\EloquentTeamQueries;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Repositories\EloquentTeamCreator;
@@ -23,6 +27,8 @@ class TeamsServiceProvider extends ServiceProvider
         $this->app->bind(ManagesTeamInvitations::class, EloquentTeamInvitationManager::class);
         $this->app->bind(RunsTeamTransactions::class, EloquentTeamTransaction::class);
         $this->app->bind(TeamQueries::class, EloquentTeamQueries::class);
+        $this->app->bind(TeamClock::class, SystemTeamClock::class);
+        $this->app->bind(SendsTeamInvitations::class, TeamInvitationSender::class);
     }
 
     public function boot(): void

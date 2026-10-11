@@ -3,14 +3,20 @@
 namespace App\Modules\Teams\Presentation\Http\Middleware;
 
 use App\Models\User;
+use App\Modules\Teams\Application\Commands\SwitchCurrentTeam;
+use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
+use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTeamMembership
 {
+    public function __construct(private TeamLifecycleHandler $lifecycle) {}
+
     /**
      * Handle an incoming request.
      *
@@ -25,7 +31,15 @@ class EnsureTeamMembership
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 
         if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
-            $user->switchTeam($team);
+            try {
+                $this->lifecycle->switchCurrentTeam(new SwitchCurrentTeam($user->id, $team->id));
+            } catch (TeamOperationRejected $exception) {
+                abort(403, $exception->getMessage());
+            }
+
+            $user->current_team_id = $team->id;
+            $user->setRelation('currentTeam', $team);
+            URL::defaults(['current_team' => $team->slug, 'team' => $team->slug]);
         }
 
         return $next($request);

@@ -10,11 +10,11 @@ interface ManagesTeamInvitations
 {
     public function create(int $teamId, int $inviterId, string $email, TeamRole $role): TeamInvitationData;
 
-    public function cancel(int $teamId, int $invitationId): void;
+    public function cancel(int $teamId, int $actorId, int $invitationId): void;
 
     public function responseForUpdate(int $userId, int $invitationId): InvitationResponseData;
 
-    public function accept(InvitationResponseData $invitation): void;
+    public function accept(InvitationResponseData $invitation): string;
 
     public function decline(int $invitationId): void;
 

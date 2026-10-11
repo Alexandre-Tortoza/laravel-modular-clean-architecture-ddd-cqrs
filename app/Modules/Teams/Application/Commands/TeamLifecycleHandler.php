@@ -7,6 +7,7 @@ use App\Modules\Teams\Application\Contracts\RunsTeamTransactions;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Application\Data\TeamMembershipData;
 use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
+use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 
 class TeamLifecycleHandler
@@ -15,7 +16,12 @@ class TeamLifecycleHandler
 
     public function update(UpdateTeam $command): TeamData
     {
-        return $this->transactions->run(fn (): TeamData => $this->teams->update($command->teamId, $command->name));
+        return $this->transactions->run(function () use ($command): TeamData {
+            $actor = $this->teams->membershipForUpdate($command->teamId, $command->actorId);
+            $this->assertPermission($actor, TeamPermission::UpdateTeam);
+
+            return $this->teams->update($command->teamId, $command->name);
+        });
     }
 
     public function switchCurrentTeam(SwitchCurrentTeam $command): void
@@ -78,11 +84,16 @@ class TeamLifecycleHandler
     public function updateMemberRole(UpdateTeamMemberRole $command): void
     {
         $this->transactions->run(function () use ($command): void {
-            $membership = $this->teams->membershipForUpdate($command->teamId, $command->userId);
+            ['actor' => $actor, 'member' => $membership] = $this->teams->membershipsForUpdate($command->teamId, $command->actorId, $command->userId);
+            $this->assertPermission($actor, TeamPermission::UpdateMember);
             $this->assertMembership($membership);
 
             if ($command->role === TeamRole::Owner) {
                 throw new TeamOperationRejected('The team owner role cannot be assigned.');
+            }
+
+            if ($membership->role === TeamRole::Owner) {
+                throw new TeamOperationRejected('The team owner role cannot be changed.');
             }
 
             $this->teams->updateMemberRole($command->teamId, $command->userId, $command->role);
@@ -92,7 +103,8 @@ class TeamLifecycleHandler
     public function removeMember(RemoveTeamMember $command): void
     {
         $this->transactions->run(function () use ($command): void {
-            $membership = $this->teams->membershipForUpdate($command->teamId, $command->userId);
+            ['actor' => $actor, 'member' => $membership] = $this->teams->membershipsForUpdate($command->teamId, $command->actorId, $command->userId);
+            $this->assertPermission($actor, TeamPermission::RemoveMember);
             $this->assertMembership($membership);
 
             if ($membership->role === TeamRole::Owner) {
@@ -124,6 +136,13 @@ class TeamLifecycleHandler
     {
         if ($membership->role === null) {
             throw new TeamOperationRejected('The user does not belong to this team.');
+        }
+    }
+
+    private function assertPermission(TeamMembershipData $actor, TeamPermission $permission): void
+    {
+        if (! $actor->role?->hasPermission($permission)) {
+            throw new TeamOperationRejected('The user is not permitted to perform this team operation.');
         }
     }
 

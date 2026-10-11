@@ -32,6 +32,26 @@ test('team invitations can be created', function () {
         'email' => 'invited@example.com',
         'role' => TeamRole::Member->value,
     ]);
+
+    Notification::assertSentOnDemandOnce(TeamInvitationNotification::class);
+});
+
+test('owner role cannot be assigned through an invitation request', function () {
+    Notification::fake();
+
+    $owner = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+
+    $this->actingAs($owner)
+        ->post(route('teams.invitations.store', $team), [
+            'email' => 'invited@example.com',
+            'role' => TeamRole::Owner->value,
+        ])
+        ->assertSessionHasErrors('role');
+
+    $this->assertDatabaseMissing('team_invitations', ['team_id' => $team->id, 'email' => 'invited@example.com']);
+    Notification::assertNothingSent();
 });
 
 test('invitation email for existing users uses login route', function () {
@@ -192,11 +212,31 @@ test('team invitations can be accepted', function () {
         ->actingAs($invitedUser)
         ->post(route('invitations.accept', $invitation));
 
-    $response->assertRedirect(route('dashboard'));
+    $response->assertRedirect(route('dashboard', ['current_team' => $team->slug]));
     $response->assertInertiaFlash('toast', ['type' => 'success', 'message' => 'Invitation accepted.']);
 
     expect($invitedUser->fresh()->belongsToTeam($team))->toBeTrue();
     expect($invitation->fresh()->accepted_at)->not->toBeNull();
+});
+
+test('accepted team remains selected after following the redirect', function () {
+    $owner = User::factory()->create();
+    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $originalTeam = $recipient->personalTeam();
+    $invitedTeam = Team::factory()->create();
+    $invitedTeam->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $invitation = TeamInvitation::factory()->create([
+        'team_id' => $invitedTeam->id,
+        'email' => $recipient->email,
+        'invited_by' => $owner->id,
+    ]);
+
+    $response = $this->actingAs($recipient)->post(route('invitations.accept', $invitation));
+    $response->assertRedirect(route('dashboard', ['current_team' => $invitedTeam->slug]));
+    $this->get($response->headers->get('Location'))->assertOk();
+
+    expect($originalTeam->id)->not->toBe($invitedTeam->id);
+    expect($recipient->fresh()->current_team_id)->toBe($invitedTeam->id);
 });
 
 test('team invitations can be declined by the invited user', function () {
