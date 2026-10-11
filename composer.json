@@ -1,11 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/vue-starter-kit",
+    "name": "alexandre-tortoza/laravel-modular-clean-architecture-ddd-cqrs",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "A Laravel modular monolith starter kit with pragmatic Clean Architecture, DDD, and lightweight CQRS.",
     "keywords": [
         "laravel",
-        "framework"
+        "modular-monolith",
+        "clean-architecture",
+        "ddd",
+        "cqrs",
+        "starter-kit"
     ],
     "license": "MIT",
     "require": {
