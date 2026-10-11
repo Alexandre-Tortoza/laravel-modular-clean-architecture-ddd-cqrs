@@ -1,8 +1,8 @@
 <?php
 
-use App\Modules\Teams\Infrastructure\Providers\TeamsServiceProvider;
 use App\Modules\Profile\Infrastructure\Providers\ProfileServiceProvider;
 use App\Modules\Security\Infrastructure\Providers\SecurityServiceProvider;
+use App\Modules\Teams\Infrastructure\Providers\TeamsServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\FortifyServiceProvider;
 
