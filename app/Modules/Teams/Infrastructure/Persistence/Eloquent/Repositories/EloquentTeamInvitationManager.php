@@ -8,7 +8,6 @@ use App\Modules\Teams\Application\Data\TeamInvitationData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
-use Illuminate\Support\Facades\DB;
 
 class EloquentTeamInvitationManager implements ManagesTeamInvitations
 {
@@ -27,13 +26,11 @@ class EloquentTeamInvitationManager implements ManagesTeamInvitations
 
     public function accept(int $userId, int $invitationId): void
     {
-        DB::transaction(function () use ($userId, $invitationId): void {
-            $user = User::query()->findOrFail($userId);
-            $invitation = TeamInvitation::query()->with('team')->lockForUpdate()->findOrFail($invitationId);
-            $invitation->team->memberships()->firstOrCreate(['user_id' => $user->id], ['role' => $invitation->role]);
-            $invitation->update(['accepted_at' => now()]);
-            $user->switchTeam($invitation->team);
-        });
+        $user = User::query()->findOrFail($userId);
+        $invitation = TeamInvitation::query()->with('team')->lockForUpdate()->findOrFail($invitationId);
+        $invitation->team->memberships()->firstOrCreate(['user_id' => $user->id], ['role' => $invitation->role]);
+        $invitation->update(['accepted_at' => now()]);
+        $user->switchTeam($invitation->team);
     }
 
     public function decline(int $invitationId): void

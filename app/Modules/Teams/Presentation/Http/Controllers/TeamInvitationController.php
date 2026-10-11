@@ -3,6 +3,10 @@
 namespace App\Modules\Teams\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Teams\Application\Commands\AcceptTeamInvitation;
+use App\Modules\Teams\Application\Commands\CancelTeamInvitation;
+use App\Modules\Teams\Application\Commands\CreateTeamInvitation;
+use App\Modules\Teams\Application\Commands\DeclineTeamInvitation;
 use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
@@ -24,7 +28,12 @@ class TeamInvitationController extends Controller
     {
         Gate::authorize('inviteMember', $team);
 
-        $invitation = $handler->create($team->id, $request->user()->id, $request->validated('email'), TeamRole::from($request->validated('role')));
+        $invitation = $handler->create(new CreateTeamInvitation(
+            teamId: $team->id,
+            inviterId: $request->user()->id,
+            email: $request->validated('email'),
+            role: TeamRole::from($request->validated('role')),
+        ));
 
         Notification::route('mail', $invitation->email)
             ->notify(new TeamInvitationNotification($invitation));
@@ -43,7 +52,7 @@ class TeamInvitationController extends Controller
 
         Gate::authorize('cancelInvitation', $team);
 
-        $handler->cancel($team->id, $invitation->id);
+        $handler->cancel(new CancelTeamInvitation($team->id, $invitation->id));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation cancelled.')]);
 
@@ -55,7 +64,7 @@ class TeamInvitationController extends Controller
      */
     public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
-        $handler->accept($request->user()->id, $invitation->id);
+        $handler->accept(new AcceptTeamInvitation($request->user()->id, $invitation->id));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation accepted.')]);
 
@@ -67,7 +76,7 @@ class TeamInvitationController extends Controller
      */
     public function decline(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
-        $handler->decline($invitation->id);
+        $handler->decline(new DeclineTeamInvitation($invitation->id));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation declined.')]);
 
