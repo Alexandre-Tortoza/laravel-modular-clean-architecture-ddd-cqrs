@@ -1,9 +1,9 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;

@@ -1,11 +1,12 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
 use App\Models\User;
-use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
-use App\Rules\ValidTeamInvitation;
+use App\Modules\Teams\Application\Data\TeamInvitationData;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use App\Modules\Teams\Presentation\Rules\ValidTeamInvitation;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 
@@ -46,7 +47,7 @@ test('invitation email for existing users uses login route', function () {
         'invited_by' => $owner->id,
     ]);
 
-    $mail = (new TeamInvitationNotification($invitation))->toMail($invitedUser);
+    $mail = (new TeamInvitationNotification(new TeamInvitationData($invitation->id, $invitation->code, $invitation->email, $invitation->team_id, $team->name, $owner->name, $invitation->role)))->toMail($invitedUser);
 
     expect($mail->actionUrl)->toBe(route('login', ['invitation' => $invitation->code]));
     $this->assertStringContainsString('dashboard', implode(' ', $mail->introLines));
@@ -64,7 +65,7 @@ test('invitation email for unknown users uses login route', function () {
         'invited_by' => $owner->id,
     ]);
 
-    $mail = (new TeamInvitationNotification($invitation))->toMail((object) []);
+    $mail = (new TeamInvitationNotification(new TeamInvitationData($invitation->id, $invitation->code, $invitation->email, $invitation->team_id, $team->name, $owner->name, $invitation->role)))->toMail((object) []);
 
     expect($mail->actionUrl)->toBe(route('login', ['invitation' => $invitation->code]));
     $this->assertStringContainsString('log in', strtolower(implode(' ', $mail->introLines)));

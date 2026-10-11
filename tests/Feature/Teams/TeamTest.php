@@ -1,9 +1,9 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
 use App\Models\User;
-use App\Rules\TeamName;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Presentation\Rules\TeamName;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Testing\AssertableInertia as Assert;
 

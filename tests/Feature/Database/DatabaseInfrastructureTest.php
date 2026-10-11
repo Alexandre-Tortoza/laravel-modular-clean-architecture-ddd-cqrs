@@ -1,10 +1,11 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
 use App\Models\User;
-use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Application\Data\TeamInvitationData;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\Schema;
 
 test('configures factory states and membership relationships', function () {
@@ -29,6 +30,15 @@ test('reports invitation lifecycle states', function () {
     $pending = TeamInvitation::factory()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $accepted = TeamInvitation::factory()->accepted()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $expired = TeamInvitation::factory()->expired()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
+    $notification = new TeamInvitationNotification(new TeamInvitationData(
+        $pending->id,
+        $pending->code,
+        $pending->email,
+        $team->id,
+        $team->name,
+        $owner->name,
+        $pending->role,
+    ));
 
     expect($pending->isPending())->toBeTrue()
         ->and($pending->isAccepted())->toBeFalse()
@@ -38,8 +48,8 @@ test('reports invitation lifecycle states', function () {
         ->and($expired->isExpired())->toBeTrue()
         ->and($expired->isPending())->toBeFalse()
         ->and($pending->getRouteKeyName())->toBe('code')
-        ->and((new TeamInvitationNotification($pending))->via($owner))->toBe(['mail'])
-        ->and((new TeamInvitationNotification($pending))->toArray($owner))->toBe([
+        ->and($notification->via($owner))->toBe(['mail'])
+        ->and($notification->toArray($owner))->toBe([
             'invitation_id' => $pending->id,
             'team_id' => $team->id,
             'team_name' => $team->name,

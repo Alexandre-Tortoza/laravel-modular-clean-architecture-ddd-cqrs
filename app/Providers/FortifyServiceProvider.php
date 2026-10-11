@@ -7,7 +7,7 @@ use App\Http\Responses\LoginResponse;
 use App\Http\Responses\PasskeyLoginResponse;
 use App\Http\Responses\TwoFactorLoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
-use App\Models\TeamInvitation;
+use App\Modules\Teams\Application\Contracts\TeamQueries;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -118,14 +118,7 @@ class FortifyServiceProvider extends ServiceProvider
             return null;
         }
 
-        $invitation = TeamInvitation::query()
-            ->with('team')
-            ->where('code', $invitationCode)
-            ->whereNull('accepted_at')
-            ->where(fn ($query) => $query
-                ->whereNull('expires_at')
-                ->orWhere('expires_at', '>=', now()))
-            ->first();
+        $invitation = app(TeamQueries::class)->pendingInvitationByCode($invitationCode);
 
         if (! $invitation) {
             return null;
@@ -133,7 +126,7 @@ class FortifyServiceProvider extends ServiceProvider
 
         return [
             'code' => $invitation->code,
-            'teamName' => $invitation->team->name,
+            'teamName' => $invitation->teamName,
         ];
     }
 }

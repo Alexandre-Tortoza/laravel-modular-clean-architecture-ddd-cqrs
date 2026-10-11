@@ -1,7 +1,7 @@
 <?php
 
-use App\Enums\TeamPermission;
-use App\Enums\TeamRole;
+use App\Modules\Teams\Domain\Enums\TeamPermission;
+use App\Modules\Teams\Domain\Enums\TeamRole;
 
 test('returns labels, hierarchy, and assignable roles', function () {
     expect(TeamRole::Owner->label())->toBe('Owner')

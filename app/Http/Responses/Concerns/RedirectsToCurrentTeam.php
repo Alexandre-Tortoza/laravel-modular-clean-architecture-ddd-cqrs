@@ -2,7 +2,8 @@
 
 namespace App\Http\Responses\Concerns;
 
-use App\Models\Team;
+use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Data\TeamData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 
@@ -17,13 +18,13 @@ trait RedirectsToCurrentTeam
         return "/{$team->slug}{$redirect}";
     }
 
-    protected function currentTeam(Request $request): Team
+    protected function currentTeam(Request $request): TeamData
     {
         $user = $request->user();
 
         abort_if(! $user, 403);
 
-        $team = $user->currentTeam ?? $user->personalTeam();
+        $team = app(TeamQueries::class)->currentForUser($user->id);
 
         abort_if(! $team, 403);
 

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Concerns\HasTeams;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -20,6 +22,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property int $id
  * @property string $name
  * @property string $email
+ * @property string|null $avatar
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret

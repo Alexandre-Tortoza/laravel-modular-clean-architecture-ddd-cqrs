@@ -1,9 +1,9 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Http\Middleware\EnsureTeamMembership;
-use App\Models\Team;
 use App\Models\User;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;

@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Modules\Teams\Presentation\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use App\Modules\Teams\Presentation\Http\Requests\CreateTeamInvitationRequest;
+use App\Modules\Teams\Presentation\Http\Requests\RespondToTeamInvitationRequest;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Notification;
+use Inertia\Inertia;
+
+class TeamInvitationController extends Controller
+{
+    /**
+     * Store a newly created invitation.
+     */
+    public function store(CreateTeamInvitationRequest $request, Team $team, TeamInvitationHandler $handler): RedirectResponse
+    {
+        Gate::authorize('inviteMember', $team);
+
+        $invitation = $handler->create($team->id, $request->user()->id, $request->validated('email'), TeamRole::from($request->validated('role')));
+
+        Notification::route('mail', $invitation->email)
+            ->notify(new TeamInvitationNotification($invitation));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation sent.')]);
+
+        return to_route('teams.edit', ['team' => $team->slug]);
+    }
+
+    /**
+     * Cancel the specified invitation.
+     */
+    public function destroy(Team $team, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
+    {
+        abort_unless($invitation->team_id === $team->id, 404);
+
+        Gate::authorize('cancelInvitation', $team);
+
+        $handler->cancel($team->id, $invitation->id);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation cancelled.')]);
+
+        return to_route('teams.edit', ['team' => $team->slug]);
+    }
+
+    /**
+     * Accept the invitation.
+     */
+    public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
+    {
+        $handler->accept($request->user()->id, $invitation->id);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation accepted.')]);
+
+        return to_route('dashboard');
+    }
+
+    /**
+     * Decline the invitation.
+     */
+    public function decline(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
+    {
+        $handler->decline($invitation->id);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation declined.')]);
+
+        return to_route('dashboard');
+    }
+}

@@ -1,10 +1,10 @@
 <?php
 
-use App\Enums\TeamPermission;
-use App\Enums\TeamRole;
-use App\Models\Team;
 use App\Models\User;
-use App\Policies\TeamPolicy;
+use App\Modules\Teams\Domain\Enums\TeamPermission;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Presentation\Policies\TeamPolicy;
 
 test('allows viewing only teams a user belongs to', function () {
     $user = User::factory()->create();

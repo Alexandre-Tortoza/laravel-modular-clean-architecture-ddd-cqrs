@@ -1,10 +1,12 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Inertia\Testing\AssertableInertia as Assert;
+use Mockery;
 
 test('guests are redirected to the login page', function () {
     $user = User::factory()->create();
@@ -23,6 +25,19 @@ test('authenticated users can visit the dashboard', function () {
         ->get(route('dashboard'));
 
     $response->assertOk();
+});
+
+test('authenticated users without a current team receive no current team prop', function () {
+    $user = User::factory()->create();
+    $queries = Mockery::mock(TeamQueries::class);
+    $queries->shouldReceive('currentForUser')->with($user->id)->andReturnNull();
+    $queries->shouldReceive('forUser')->with($user->id, true)->andReturn([]);
+    $queries->shouldReceive('pendingInvitationsForEmail')->with($user->email)->andReturn([]);
+    $this->app->instance(TeamQueries::class, $queries);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertInertia(fn (Assert $page) => $page->where('currentTeam', null));
 });
 
 test('dashboard includes pending invitations for the authenticated user', function () {

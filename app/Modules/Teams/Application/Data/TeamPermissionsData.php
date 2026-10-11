@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Data;
+namespace App\Modules\Teams\Application\Data;
 
-readonly class TeamPermissions
+readonly class TeamPermissionsData
 {
     public function __construct(
         public bool $canUpdateTeam,
@@ -12,7 +12,5 @@ readonly class TeamPermissions
         public bool $canRemoveMember,
         public bool $canCreateInvitation,
         public bool $canCancelInvitation,
-    ) {
-        //
-    }
+    ) {}
 }
