@@ -86,6 +86,7 @@
             "@php artisan test"
         ],
     "coverage": [
+      "Composer\\Config::disableProcessTimeout",
       "XDEBUG_MODE=coverage php -d memory_limit=512M vendor/bin/pest --coverage --branch-coverage --exactly=100 --coverage-jsonl=storage/coverage --coverage-html=storage/coverage/html",
       "@php tests/Support/AssertFullCoverage.php storage/coverage"
     ],
