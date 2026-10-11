@@ -1,13 +1,17 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
+use App\Modules\Teams\Application\Commands\SwitchCurrentTeamHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Tests\Support\UserWithPersonalTeam;
 
 function membershipRequest(?User $user, string $parameter, Team|string|null $team): Request
 {
@@ -29,9 +33,9 @@ function membershipRequest(?User $user, string $parameter, Team|string|null $tea
 }
 
 test('allows a member and switches to a team resolved from its slug', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
 
     $response = app(EnsureTeamMembership::class)->handle(
         membershipRequest($user, 'current_team', $team->slug),
@@ -41,14 +45,14 @@ test('allows a member and switches to a team resolved from its slug', function (
     expect($response->getContent())->toBe('next')
         ->and($user->fresh()->current_team_id)->toBe($team->id)
         ->and($user->current_team_id)->toBe($team->id)
-        ->and($user->currentTeam->id)->toBe($team->id)
+        ->and(app(TeamContext::class)->currentForUser($user->id)->id)->toBe($team->id)
         ->and(URL::getDefaultParameters()['current_team'])->toBe($team->slug);
 });
 
 test('allows a sufficient role without changing the current team for a team route parameter', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
 
     $response = app(EnsureTeamMembership::class)->handle(
         membershipRequest($user, 'team', $team),
@@ -60,6 +64,21 @@ test('allows a sufficient role without changing the current team for a team rout
         ->and($user->fresh()->current_team_id)->not->toBe($team->id);
 });
 
+test('forbids a current team route when a membership changes during switching', function () {
+    $user = UserWithPersonalTeam::create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+    $switch = Mockery::mock(SwitchCurrentTeamHandler::class);
+    $switch->shouldReceive('handle')->once()->andThrow(new TeamOperationRejected('Membership changed.'));
+    $request = membershipRequest($user, 'current_team', $team);
+
+    expect(fn () => (new EnsureTeamMembership($switch, app(TeamContext::class)))->handle(
+        $request,
+        fn (): Response => new Response('next'),
+    ))->toThrow(HttpException::class, 'Membership changed.')
+        ->and($user->fresh()->current_team_id)->not->toBe($team->id);
+});
+
 test('forbids missing users, teams, and memberships', function () {
     $middleware = app(EnsureTeamMembership::class);
 
@@ -68,23 +87,23 @@ test('forbids missing users, teams, and memberships', function () {
         fn (): Response => new Response('next'),
     ))->toThrow(HttpException::class)
         ->and(fn () => $middleware->handle(
-            membershipRequest(User::factory()->create(), 'team', null),
+            membershipRequest(UserWithPersonalTeam::create(), 'team', null),
             fn (): Response => new Response('next'),
         ))->toThrow(HttpException::class)
         ->and(fn () => $middleware->handle(
-            membershipRequest(User::factory()->create(), 'team', 'missing-team'),
+            membershipRequest(UserWithPersonalTeam::create(), 'team', 'missing-team'),
             fn (): Response => new Response('next'),
         ))->toThrow(HttpException::class)
         ->and(fn () => $middleware->handle(
-            membershipRequest(User::factory()->create(), 'team', Team::factory()->create()),
+            membershipRequest(UserWithPersonalTeam::create(), 'team', Team::factory()->create()),
             fn (): Response => new Response('next'),
         ))->toThrow(HttpException::class);
 });
 
 test('forbids invalid and insufficient minimum roles', function (string $minimumRole) {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
 
     expect(fn () => app(EnsureTeamMembership::class)->handle(
         membershipRequest($user, 'team', $team),

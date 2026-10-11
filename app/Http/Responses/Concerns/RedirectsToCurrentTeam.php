@@ -2,7 +2,7 @@
 
 namespace App\Http\Responses\Concerns;
 
-use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Data\TeamData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -24,7 +24,7 @@ trait RedirectsToCurrentTeam
 
         abort_if(! $user, 403);
 
-        $team = app(TeamQueries::class)->currentOrPersonalForUser($user->id);
+        $team = app(TeamContext::class)->currentOrPersonalForUser($user->id);
 
         abort_if(! $team, 403);
 

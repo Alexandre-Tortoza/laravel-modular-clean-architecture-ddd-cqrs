@@ -1,8 +1,8 @@
 <?php
 
-use App\Models\User;
-use App\Modules\Profile\Application\Commands\UpdateProfile;
-use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
+use App\Modules\Identity\Application\Commands\UpdateProfile;
+use App\Modules\Identity\Application\Commands\UpdateProfileHandler;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;

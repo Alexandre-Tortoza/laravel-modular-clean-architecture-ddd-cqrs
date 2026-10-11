@@ -1,156 +1,68 @@
 <?php
 
-use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Database\Eloquent\Model;
+use Tests\Architecture\Support\ModuleBoundaryInspector;
 
-arch('teams domain isolation')
-    ->expect('App\\Modules\\Teams\\Domain')
-    ->not->toUse([
-        'App\\Modules\\Teams\\Application',
-        'App\\Modules\\Teams\\Infrastructure',
-        'App\\Modules\\Teams\\Presentation',
-        'Illuminate',
-        'Laravel',
-        'Inertia',
-        'App\\Models',
-    ]);
+function inspectModules(): ModuleBoundaryInspector
+{
+    return new ModuleBoundaryInspector(dirname(__DIR__, 2));
+}
 
-arch('teams application isolation')
-    ->expect('App\\Modules\\Teams\\Application')
-    ->not->toUse([
-        'App\\Modules\\Teams\\Infrastructure',
-        'App\\Modules\\Teams\\Presentation',
-        'Illuminate',
-        'Laravel',
-        'Inertia',
-        'App\\Models',
-    ]);
+test('every module keeps domain and application independent of framework and adapters', function () {
+    expect(inspectModules()->modules())->not->toBeEmpty();
+    expect(inspectModules()->layerViolations())->toBe([]);
+});
 
-arch('profile application isolation')
-    ->expect('App\\Modules\\Profile\\Application')
-    ->not->toUse([
-        'App\\Modules\\Profile\\Infrastructure',
-        'App\\Modules\\Profile\\Presentation',
-        'Illuminate',
-        'Laravel',
-        'Inertia',
-        'App\\Models',
-    ]);
+test('external consumers use only explicitly exported module symbols', function () {
+    expect(inspectModules()->publicBoundaryViolations())->toBe([]);
+});
 
-arch('security application isolation')
-    ->expect('App\\Modules\\Security\\Application')
-    ->not->toUse([
-        'App\\Modules\\Security\\Infrastructure',
-        'App\\Modules\\Security\\Presentation',
-        'Illuminate',
-        'Laravel',
-        'Inertia',
-        'App\\Models',
-    ]);
+test('module dependencies have no cycles', function () {
+    expect(inspectModules()->cycleViolations())->toBe([]);
+});
 
-arch('teams application contracts are interfaces')
-    ->expect('App\\Modules\\Teams\\Application\\Contracts')
-    ->toBeInterfaces();
+test('commands and application data are readonly', function () {
+    expect(inspectModules()->immutableValueViolations())->toBe([]);
+});
 
-arch('profile and security application contracts are interfaces')
-    ->expect([
-        'App\\Modules\\Profile\\Application\\Contracts',
-        'App\\Modules\\Security\\Application\\Contracts',
-    ])
-    ->toBeInterfaces();
+test('internal application ports are interfaces', function () {
+    expect(inspectModules()->internalContractViolations())->toBe([]);
+});
 
-arch('teams application data is immutable')
-    ->expect('App\\Modules\\Teams\\Application\\Data')
-    ->classes()
-    ->toBeReadonly();
+test('module Eloquent models and factories stay in infrastructure', function () {
+    expect(inspectModules()->eloquentPlacementViolations())->toBe([]);
+});
 
-arch('migrated application commands are immutable')
-    ->expect([
-        'App\\Modules\\Teams\\Application\\Commands\\CreateTeam',
-        'App\\Modules\\Teams\\Application\\Commands\\CreateTeamInvitation',
-        'App\\Modules\\Teams\\Application\\Commands\\CancelTeamInvitation',
-        'App\\Modules\\Teams\\Application\\Commands\\AcceptTeamInvitation',
-        'App\\Modules\\Teams\\Application\\Commands\\DeclineTeamInvitation',
-        'App\\Modules\\Teams\\Application\\Commands\\PruneExpiredTeamInvitations',
-        'App\\Modules\\Teams\\Application\\Commands\\DeleteTeam',
-        'App\\Modules\\Teams\\Application\\Commands\\LeaveTeam',
-        'App\\Modules\\Teams\\Application\\Commands\\RemoveTeamMember',
-        'App\\Modules\\Teams\\Application\\Commands\\SwitchCurrentTeam',
-        'App\\Modules\\Teams\\Application\\Commands\\UpdateTeam',
-        'App\\Modules\\Teams\\Application\\Commands\\UpdateTeamMemberRole',
-        'App\\Modules\\Profile\\Application\\Commands\\DeleteProfile',
-        'App\\Modules\\Profile\\Application\\Commands\\UpdateProfile',
-        'App\\Modules\\Security\\Application\\Commands\\UpdatePassword',
-    ])
-    ->toBeReadonly();
+test('repositories do not control transactions and modules contain no debug helpers', function () {
+    expect(inspectModules()->misplacedTransactionViolations())->toBe([]);
+    expect(inspectModules()->debugHelperViolations())->toBe([]);
+});
 
-arch('teams Eloquent models stay in infrastructure')
-    ->expect('App\\Modules\\Teams\\Infrastructure\\Persistence\\Eloquent\\Models')
-    ->classes()
-    ->toExtend(Model::class);
+test('a new module with a forbidden dependency is discovered', function () {
+    $root = sys_get_temp_dir().'/module-boundary-'.bin2hex(random_bytes(8));
+    $module = $root.'/app/Modules/NewModule/Domain';
+    $otherModule = $root.'/app/Modules/OtherModule/Infrastructure';
+    mkdir($module, 0777, true);
+    mkdir($otherModule, 0777, true);
+    $file = $module.'/Forbidden.php';
+    $otherFile = $otherModule.'/PrivateStore.php';
+    file_put_contents($file, '<?php namespace App\\Modules\\NewModule\\Domain; use Illuminate\\Support\\Collection; use App\\Modules\\OtherModule\\Infrastructure\\PrivateStore; final class Forbidden { public function value(): Collection { return new Collection; } }');
+    file_put_contents($otherFile, '<?php namespace App\\Modules\\OtherModule\\Infrastructure; final class PrivateStore {}');
 
-arch('teams Eloquent factories stay in infrastructure')
-    ->expect('App\\Modules\\Teams\\Infrastructure\\Persistence\\Eloquent\\Factories')
-    ->classes()
-    ->toExtend(Factory::class);
+    try {
+        $inspector = new ModuleBoundaryInspector($root);
 
-arch('teams application defines transaction boundaries through its contract')
-    ->expect([
-        'App\\Modules\\Teams\\Application\\Commands\\CreateTeamHandler',
-        'App\\Modules\\Teams\\Application\\Commands\\TeamInvitationHandler',
-        'App\\Modules\\Teams\\Application\\Commands\\TeamLifecycleHandler',
-    ])
-    ->toUse('App\\Modules\\Teams\\Application\\Contracts\\RunsTeamTransactions');
-
-arch('teams repositories do not start transactions')
-    ->expect('App\\Modules\\Teams\\Infrastructure\\Persistence\\Eloquent\\Repositories')
-    ->not->toUse('Illuminate\\Support\\Facades\\DB');
-
-arch('teams does not use profile or security internals')
-    ->expect('App\\Modules\\Teams')
-    ->not->toUse([
-        'App\\Modules\\Profile\\Domain',
-        'App\\Modules\\Profile\\Infrastructure',
-        'App\\Modules\\Profile\\Presentation',
-        'App\\Modules\\Security\\Domain',
-        'App\\Modules\\Security\\Infrastructure',
-        'App\\Modules\\Security\\Presentation',
-    ]);
-
-arch('profile and security do not use teams internals')
-    ->expect([
-        'App\\Modules\\Profile',
-        'App\\Modules\\Security',
-    ])
-    ->not->toUse([
-        'App\\Modules\\Teams\\Domain',
-        'App\\Modules\\Teams\\Infrastructure',
-        'App\\Modules\\Teams\\Presentation',
-    ]);
-
-arch('profile does not use security internals')
-    ->expect('App\\Modules\\Profile')
-    ->not->toUse([
-        'App\\Modules\\Security\\Domain',
-        'App\\Modules\\Security\\Infrastructure',
-        'App\\Modules\\Security\\Presentation',
-    ]);
-
-arch('security does not use profile internals')
-    ->expect('App\\Modules\\Security')
-    ->not->toUse([
-        'App\\Modules\\Profile\\Domain',
-        'App\\Modules\\Profile\\Infrastructure',
-        'App\\Modules\\Profile\\Presentation',
-    ]);
-
-arch('teams production code has no debug helpers')
-    ->expect('App\\Modules\\Teams')
-    ->not->toUse(['dd', 'dump', 'ray']);
-
-arch('profile and security production code has no debug helpers')
-    ->expect([
-        'App\\Modules\\Profile',
-        'App\\Modules\\Security',
-    ])
-    ->not->toUse(['dd', 'dump', 'ray']);
+        expect($inspector->modules())->toBe(['NewModule', 'OtherModule']);
+        expect($inspector->layerViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses Illuminate\\Support\\Collection');
+        expect($inspector->publicBoundaryViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses private App\\Modules\\OtherModule\\Infrastructure\\PrivateStore');
+    } finally {
+        unlink($file);
+        unlink($otherFile);
+        rmdir($module);
+        rmdir($otherModule);
+        rmdir(dirname($module));
+        rmdir(dirname($otherModule));
+        rmdir(dirname($module, 2));
+        rmdir(dirname($module, 3));
+        rmdir($root);
+    }
+});

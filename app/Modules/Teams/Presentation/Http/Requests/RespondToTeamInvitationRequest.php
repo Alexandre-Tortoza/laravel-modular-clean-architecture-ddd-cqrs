@@ -2,6 +2,7 @@
 
 namespace App\Modules\Teams\Presentation\Http\Requests;
 
+use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Teams\Presentation\Rules\ValidTeamInvitation;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -16,7 +17,7 @@ class RespondToTeamInvitationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'invitation' => ['required', new ValidTeamInvitation($this->user())],
+            'invitation' => ['required', new ValidTeamInvitation($this->user(), app(UserDirectory::class))],
         ];
     }
 

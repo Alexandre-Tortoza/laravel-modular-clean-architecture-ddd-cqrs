@@ -3,16 +3,20 @@
 namespace App\Modules\Teams\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\CreateTeam;
 use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use App\Modules\Teams\Application\Commands\DeleteTeam;
+use App\Modules\Teams\Application\Commands\DeleteTeamHandler;
 use App\Modules\Teams\Application\Commands\LeaveTeam;
+use App\Modules\Teams\Application\Commands\LeaveTeamHandler;
 use App\Modules\Teams\Application\Commands\SwitchCurrentTeam;
-use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
+use App\Modules\Teams\Application\Commands\SwitchCurrentTeamHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeam;
+use App\Modules\Teams\Application\Commands\UpdateTeamHandler;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
-use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Requests\DeleteTeamRequest;
 use App\Modules\Teams\Presentation\Http\Requests\SaveTeamRequest;
@@ -75,12 +79,12 @@ class TeamController extends Controller
     /**
      * Update the specified team.
      */
-    public function update(SaveTeamRequest $request, Team $team, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function update(SaveTeamRequest $request, Team $team, UpdateTeamHandler $handler): RedirectResponse
     {
         Gate::authorize('update', $team);
 
         try {
-            $team = $lifecycle->update(new UpdateTeam($request->user()->id, $team->id, $request->validated('name')));
+            $team = $handler->handle(new UpdateTeam($request->user()->id, $team->id, $request->validated('name')));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }
@@ -93,12 +97,12 @@ class TeamController extends Controller
     /**
      * Switch the user's current team.
      */
-    public function switch(Request $request, Team $team, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function switch(Request $request, Team $team, SwitchCurrentTeamHandler $handler, TeamContext $context): RedirectResponse
     {
-        abort_unless($request->user()->belongsToTeam($team), 403);
+        abort_unless($context->belongsToTeam($request->user()->id, $team->id), 403);
 
         try {
-            $lifecycle->switchCurrentTeam(new SwitchCurrentTeam($request->user()->id, $team->id));
+            $handler->handle(new SwitchCurrentTeam($request->user()->id, $team->id));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }
@@ -109,12 +113,12 @@ class TeamController extends Controller
     /**
      * Leave the specified team.
      */
-    public function leave(Request $request, Team $team, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function leave(Request $request, Team $team, LeaveTeamHandler $handler): RedirectResponse
     {
         Gate::authorize('leave', $team);
 
         try {
-            $lifecycle->leave(new LeaveTeam($request->user()->id, $team->id));
+            $handler->handle(new LeaveTeam($request->user()->id, $team->id));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }
@@ -127,10 +131,10 @@ class TeamController extends Controller
     /**
      * Delete the specified team.
      */
-    public function destroy(DeleteTeamRequest $request, Team $team, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function destroy(DeleteTeamRequest $request, Team $team, DeleteTeamHandler $handler): RedirectResponse
     {
         try {
-            $lifecycle->delete(new DeleteTeam($request->user()->id, $team->id));
+            $handler->handle(new DeleteTeam($request->user()->id, $team->id));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }

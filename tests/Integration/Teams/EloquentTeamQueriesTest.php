@@ -1,16 +1,20 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Application\Api\UserDirectory;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\CurrentTeamSelection;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Tests\Support\UserWithPersonalTeam;
 
 test('returns a user team projection without exposing an Eloquent model', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create(['name' => 'Product Team']);
-    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
 
     $teams = app(TeamQueries::class)->forUser($user->id, includeCurrent: true);
     $productTeam = collect($teams)->first(
@@ -24,9 +28,9 @@ test('returns a user team projection without exposing an Eloquent model', functi
 });
 
 test('returns current team permissions and pending invitation projections', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create(['name' => 'Product Team']);
-    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
         'email' => $user->email,
@@ -51,10 +55,11 @@ test('returns current team permissions and pending invitation projections', func
 test('pending invitation queries exclude an invitation at its expiration time', function () {
     $this->travelTo('2026-01-01 12:00:00');
 
-    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $recipient = UserWithPersonalTeam::create(['email' => 'invited@example.com']);
     $invitation = TeamInvitation::factory()->create([
         'email' => $recipient->email,
         'expires_at' => '2026-01-01 12:01:00',
+        'invited_by' => $recipient->id,
     ]);
     $queries = app(TeamQueries::class);
 
@@ -68,16 +73,16 @@ test('pending invitation queries exclude an invitation at its expiration time', 
 });
 
 test('returns no current team when a user has not selected one', function () {
-    $user = User::factory()->create();
-    $user->update(['current_team_id' => null]);
+    $user = UserWithPersonalTeam::create();
+    app(CurrentTeamSelection::class)->select($user->id, null);
 
     expect(app(TeamQueries::class)->currentForUser($user->id))->toBeNull();
 });
 
 test('resolves the personal team when a user has not selected a current team', function () {
-    $user = User::factory()->create();
-    $personalTeam = $user->personalTeam();
-    $user->update(['current_team_id' => null]);
+    $user = UserWithPersonalTeam::create();
+    $personalTeam = UserWithPersonalTeam::personalTeam($user);
+    app(CurrentTeamSelection::class)->select($user->id, null);
 
     $team = app(TeamQueries::class)->currentOrPersonalForUser($user->id);
 
@@ -86,10 +91,10 @@ test('resolves the personal team when a user has not selected a current team', f
 });
 
 test('excludes the current team without changing its projection flag', function () {
-    $user = User::factory()->create();
-    $currentTeam = $user->personalTeam();
+    $user = UserWithPersonalTeam::create();
+    $currentTeam = UserWithPersonalTeam::personalTeam($user);
     $otherTeam = Team::factory()->create(['name' => 'Product Team']);
-    $otherTeam->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $otherTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
 
     $queries = app(TeamQueries::class);
     $withoutCurrent = $queries->forUser($user->id);
@@ -101,4 +106,32 @@ test('excludes the current team without changing its projection flag', function 
         ->and($withCurrent)->toHaveCount(2)
         ->and(collect($withCurrent)->firstWhere('id', $currentTeam?->id)?->isCurrent)->toBeTrue()
         ->and(collect($withCurrent)->firstWhere('id', $otherTeam->id)?->isCurrent)->toBeFalse();
+});
+
+test('returns no fallback team for a user without memberships', function (): void {
+    $user = User::factory()->create();
+
+    expect(app(TeamQueries::class)->currentOrPersonalForUser($user->id))->toBeNull();
+});
+
+test('does not project a membership whose user is absent from the identity directory', function (): void {
+    $user = UserWithPersonalTeam::create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+    $directory = app(UserDirectory::class);
+    $incompleteDirectory = Mockery::mock(UserDirectory::class);
+    $incompleteDirectory->shouldReceive('find')->andReturnUsing(fn (int $id) => $directory->find($id));
+    $incompleteDirectory->shouldReceive('findMany')->andReturn([]);
+    app()->instance(UserDirectory::class, $incompleteDirectory);
+
+    try {
+        expect(app(TeamQueries::class)->editFor($user->id, $team->id)->members)->toBe([]);
+    } finally {
+        Mockery::close();
+    }
+});
+
+test('reports an unknown user rather than returning another user team projection', function (): void {
+    expect(fn () => app(TeamQueries::class)->forUser(999999))
+        ->toThrow(ModelNotFoundException::class);
 });

@@ -2,7 +2,6 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models;
 
-use App\Models\User;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,7 +16,6 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Team $team
- * @property-read User $user
  */
 #[Fillable(['team_id', 'user_id', 'role'])]
 class Membership extends Pivot
@@ -44,16 +42,6 @@ class Membership extends Pivot
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
-    }
-
-    /**
-     * Get the user that belongs to this membership.
-     *
-     * @return BelongsTo<User, $this>
-     */
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
     }
 
     /**

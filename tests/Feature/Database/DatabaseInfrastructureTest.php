@@ -1,18 +1,18 @@
 <?php
 
-use App\Models\User;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\UserWithPersonalTeam;
 
 test('configures factory states and membership relationships', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->personal()->create();
     $trashedTeam = Team::factory()->trashed()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
 
     $membership = $team->memberships()->firstOrFail();
 
@@ -20,13 +20,13 @@ test('configures factory states and membership relationships', function () {
         ->and($trashedTeam->trashed())->toBeTrue()
         ->and($membership->role)->toBe(TeamRole::Admin)
         ->and($membership->team->is($team))->toBeTrue()
-        ->and($membership->user->is($user))->toBeTrue();
+        ->and($membership->user_id === $user->id)->toBeTrue();
 });
 
 test('reports invitation lifecycle states', function () {
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $pending = TeamInvitation::factory()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $accepted = TeamInvitation::factory()->accepted()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $expired = TeamInvitation::factory()->expired()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Form, Head } from '@inertiajs/vue3';
-import SecurityController from '@/actions/App/Modules/Security/Presentation/Http/Controllers/SecurityController';
+import SecurityController from '@/actions/App/Modules/Identity/Presentation/Http/Controllers/SecurityController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';

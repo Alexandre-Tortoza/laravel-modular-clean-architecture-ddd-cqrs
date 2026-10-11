@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 use Laravel\Passkeys\Contracts\PasskeyLoginResponse;
+use Tests\Support\UserWithPersonalTeam;
 
 test('login screen can be rendered', function () {
     $response = $this->get(route('login'));
@@ -19,7 +20,7 @@ test('login screen can be rendered', function () {
 test('login screen includes team invitation context', function () {
     $owner = User::factory()->create();
     $team = Team::factory()->create(['name' => 'Laravel Team']);
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner->value]);
 
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
@@ -38,7 +39,7 @@ test('login screen includes team invitation context', function () {
 });
 
 test('users can authenticate using the login screen', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
 
     $response = $this->post(route('login.store'), [
         'email' => $user->email,
@@ -50,9 +51,9 @@ test('users can authenticate using the login screen', function () {
 });
 
 test('users without a selected current team are redirected to their personal team after login', function () {
-    $user = User::factory()->create();
-    $personalTeam = $user->personalTeam();
-    $user->update(['current_team_id' => null]);
+    $user = UserWithPersonalTeam::create();
+    $personalTeam = Team::query()->findOrFail($user->current_team_id);
+    $user->forceFill(['current_team_id' => null])->save();
 
     $response = $this->post(route('login.store'), [
         'email' => $user->email,
@@ -64,7 +65,7 @@ test('users without a selected current team are redirected to their personal tea
 });
 
 test('passkey login response redirects to the current team dashboard', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
 
     $request = Request::create(route('login', absolute: false), 'GET', server: [
         'HTTP_ACCEPT' => 'application/json',
@@ -74,11 +75,11 @@ test('passkey login response redirects to the current team dashboard', function 
 
     $jsonResponse = app(PasskeyLoginResponse::class)->toResponse($request);
 
-    expect($jsonResponse->getData()->redirect)->toBe(route('dashboard', ['current_team' => $user->personalTeam()->slug]));
+    expect($jsonResponse->getData()->redirect)->toBe(route('dashboard', ['current_team' => Team::query()->findOrFail($user->current_team_id)->slug]));
 });
 
 test('passkey login response redirects browser requests to the current team dashboard', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
 
     $request = Request::create(route('login', absolute: false), 'GET');
     $request->setLaravelSession($this->app['session.store']);
@@ -86,7 +87,7 @@ test('passkey login response redirects browser requests to the current team dash
 
     $response = app(PasskeyLoginResponse::class)->toResponse($request);
 
-    expect($response->getTargetUrl())->toBe(route('dashboard', ['current_team' => $user->personalTeam()->slug]));
+    expect($response->getTargetUrl())->toBe(route('dashboard', ['current_team' => Team::query()->findOrFail($user->current_team_id)->slug]));
 });
 
 test('users with two factor enabled are redirected to two factor challenge', function () {

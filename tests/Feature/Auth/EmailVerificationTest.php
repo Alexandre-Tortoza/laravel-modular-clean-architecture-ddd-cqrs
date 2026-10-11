@@ -1,9 +1,11 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
+use Tests\Support\UserWithPersonalTeam;
 
 test('email verification screen can be rendered', function () {
     $user = User::factory()->unverified()->create();
@@ -22,8 +24,8 @@ test('unverified users are redirected to the email verification prompt', functio
 });
 
 test('email can be verified', function () {
-    $user = User::factory()->unverified()->create();
-    $team = $user->personalTeam();
+    $user = UserWithPersonalTeam::create(['email_verified_at' => null]);
+    $team = Team::query()->findOrFail($user->current_team_id);
 
     Event::fake();
 
@@ -86,8 +88,8 @@ test('verified user is redirected to dashboard from verification prompt', functi
 });
 
 test('already verified user visiting verification link is redirected without firing event again', function () {
-    $user = User::factory()->create();
-    $team = $user->personalTeam();
+    $user = UserWithPersonalTeam::create();
+    $team = Team::query()->findOrFail($user->current_team_id);
 
     Event::fake();
 

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Teams\Presentation\Http\Requests;
 
+use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
@@ -24,7 +25,7 @@ class CreateTeamInvitationRequest extends FormRequest
         abort_if(! $team instanceof Team, 404);
 
         return [
-            'email' => ['required', 'string', 'email', 'max:255', new UniqueTeamInvitation($team, app(TeamClock::class))],
+            'email' => ['required', 'string', 'email', 'max:255', new UniqueTeamInvitation($team, app(TeamClock::class), app(UserDirectory::class))],
             'role' => ['required', 'string', Rule::in([TeamRole::Admin->value, TeamRole::Member->value])],
         ];
     }

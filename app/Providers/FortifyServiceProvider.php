@@ -2,12 +2,11 @@
 
 namespace App\Providers;
 
-use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Responses\LoginResponse;
 use App\Http\Responses\PasskeyLoginResponse;
 use App\Http\Responses\TwoFactorLoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
-use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Api\TeamContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -37,30 +36,21 @@ class FortifyServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-    public function boot(): void
+    public function boot(TeamContext $teams): void
     {
-        $this->configureActions();
-        $this->configureViews();
+        $this->configureViews($teams);
         $this->configureRateLimiting();
-    }
-
-    /**
-     * Configure Fortify actions.
-     */
-    private function configureActions(): void
-    {
-        Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
     }
 
     /**
      * Configure Fortify views.
      */
-    private function configureViews(): void
+    private function configureViews(TeamContext $teams): void
     {
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
             'status' => $request->session()->get('status'),
-            'teamInvitation' => $this->teamInvitation($request),
+            'teamInvitation' => $this->teamInvitation($request, $teams),
         ]));
 
         Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/ResetPassword', [
@@ -110,7 +100,7 @@ class FortifyServiceProvider extends ServiceProvider
      *
      * @return array{code: string, teamName: string}|null
      */
-    private function teamInvitation(Request $request): ?array
+    private function teamInvitation(Request $request, TeamContext $teams): ?array
     {
         $invitationCode = $request->query('invitation');
 
@@ -118,7 +108,7 @@ class FortifyServiceProvider extends ServiceProvider
             return null;
         }
 
-        $invitation = app(TeamQueries::class)->pendingInvitationByCode($invitationCode);
+        $invitation = $teams->pendingInvitationByCode($invitationCode);
 
         if (! $invitation) {
             return null;

@@ -1,13 +1,21 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
+use App\Modules\Teams\Application\Commands\CreateTeamInvitation;
+use App\Modules\Teams\Application\Commands\CreateTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\DeleteTeam;
-use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
+use App\Modules\Teams\Application\Commands\DeleteTeamHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeamMemberRole;
+use App\Modules\Teams\Application\Commands\UpdateTeamMemberRoleHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamInvitationCreationRejected;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\CurrentTeamSelection;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use Tests\Support\UserWithPersonalTeam;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class);
@@ -17,15 +25,15 @@ test('opposing member changes complete across two PostgreSQL connections', funct
         $this->markTestSkipped('This test requires PostgreSQL and pcntl.');
     }
 
-    $firstUser = User::factory()->create();
-    $secondUser = User::factory()->create();
+    $firstUser = UserWithPersonalTeam::create();
+    $secondUser = UserWithPersonalTeam::create();
     $firstTeam = Team::factory()->create();
     $secondTeam = Team::factory()->create();
 
-    $firstTeam->members()->attach($firstUser, ['role' => TeamRole::Owner->value]);
-    $firstTeam->members()->attach($secondUser, ['role' => TeamRole::Member->value]);
-    $secondTeam->members()->attach($secondUser, ['role' => TeamRole::Owner->value]);
-    $secondTeam->members()->attach($firstUser, ['role' => TeamRole::Member->value]);
+    $firstTeam->memberships()->create(['user_id' => $firstUser->id, 'role' => TeamRole::Owner]);
+    $firstTeam->memberships()->create(['user_id' => $secondUser->id, 'role' => TeamRole::Member]);
+    $secondTeam->memberships()->create(['user_id' => $secondUser->id, 'role' => TeamRole::Owner]);
+    $secondTeam->memberships()->create(['user_id' => $firstUser->id, 'role' => TeamRole::Member]);
 
     $barrier = sys_get_temp_dir().'/teams-locks-'.bin2hex(random_bytes(8));
     mkdir($barrier);
@@ -71,7 +79,7 @@ test('opposing member changes complete across two PostgreSQL connections', funct
             }
         });
 
-        app(TeamLifecycleHandler::class)->updateMemberRole(new UpdateTeamMemberRole(
+        app(UpdateTeamMemberRoleHandler::class)->handle(new UpdateTeamMemberRole(
             actorId: $actorId,
             teamId: $teamId,
             userId: $memberId,
@@ -106,8 +114,8 @@ test('opposing member changes complete across two PostgreSQL connections', funct
     expect($parentResult)->toBe('ok')
         ->and($childResult)->toBe('ok')
         ->and(pcntl_wexitstatus($status))->toBe(0)
-        ->and($firstUser->fresh()->teamRole($secondTeam))->toBe(TeamRole::Admin)
-        ->and($secondUser->fresh()->teamRole($firstTeam))->toBe(TeamRole::Admin);
+        ->and(app(TeamContext::class)->roleFor($firstUser->id, $secondTeam->id))->toBe(TeamRole::Admin)
+        ->and(app(TeamContext::class)->roleFor($secondUser->id, $firstTeam->id))->toBe(TeamRole::Admin);
 });
 
 test('opposing team deletions complete without a user lock deadlock', function () {
@@ -115,19 +123,19 @@ test('opposing team deletions complete without a user lock deadlock', function (
         $this->markTestSkipped('This test requires PostgreSQL and pcntl.');
     }
 
-    $firstUser = User::factory()->create();
-    $secondUser = User::factory()->create();
-    $firstPersonalTeamId = $firstUser->personalTeam()->id;
-    $secondPersonalTeamId = $secondUser->personalTeam()->id;
+    $firstUser = UserWithPersonalTeam::create();
+    $secondUser = UserWithPersonalTeam::create();
+    $firstPersonalTeamId = UserWithPersonalTeam::personalTeam($firstUser)->id;
+    $secondPersonalTeamId = UserWithPersonalTeam::personalTeam($secondUser)->id;
     $firstTeam = Team::factory()->create();
     $secondTeam = Team::factory()->create();
 
-    $firstTeam->members()->attach($firstUser, ['role' => TeamRole::Owner->value]);
-    $firstTeam->members()->attach($secondUser, ['role' => TeamRole::Member->value]);
-    $secondTeam->members()->attach($secondUser, ['role' => TeamRole::Owner->value]);
-    $secondTeam->members()->attach($firstUser, ['role' => TeamRole::Member->value]);
-    $firstUser->update(['current_team_id' => $secondTeam->id]);
-    $secondUser->update(['current_team_id' => $firstTeam->id]);
+    $firstTeam->memberships()->create(['user_id' => $firstUser->id, 'role' => TeamRole::Owner]);
+    $firstTeam->memberships()->create(['user_id' => $secondUser->id, 'role' => TeamRole::Member]);
+    $secondTeam->memberships()->create(['user_id' => $secondUser->id, 'role' => TeamRole::Owner]);
+    $secondTeam->memberships()->create(['user_id' => $firstUser->id, 'role' => TeamRole::Member]);
+    app(CurrentTeamSelection::class)->select($firstUser->id, $secondTeam->id);
+    app(CurrentTeamSelection::class)->select($secondUser->id, $firstTeam->id);
 
     $barrier = sys_get_temp_dir().'/teams-deletion-locks-'.bin2hex(random_bytes(8));
     mkdir($barrier);
@@ -171,7 +179,7 @@ test('opposing team deletions complete without a user lock deadlock', function (
             }
         });
 
-        app(TeamLifecycleHandler::class)->delete(new DeleteTeam($actorId, $teamId));
+        app(DeleteTeamHandler::class)->handle(new DeleteTeam($actorId, $teamId));
 
         if ($teamLockCount !== 1) {
             throw new RuntimeException("Expected one team lock without a retry; acquired {$teamLockCount}.");
@@ -206,4 +214,73 @@ test('opposing team deletions complete without a user lock deadlock', function (
 
     $this->assertSoftDeleted('teams', ['id' => $firstTeam->id]);
     $this->assertSoftDeleted('teams', ['id' => $secondTeam->id]);
+});
+
+test('concurrent invitations for the same email create only one pending invitation', function (): void {
+    if (DB::getDriverName() !== 'pgsql' || ! function_exists('pcntl_fork')) {
+        $this->markTestSkipped('This test requires PostgreSQL and pcntl.');
+    }
+
+    $owner = UserWithPersonalTeam::create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $barrier = sys_get_temp_dir().'/teams-invitation-locks-'.bin2hex(random_bytes(8));
+    mkdir($barrier);
+
+    $childProcessId = pcntl_fork();
+    expect($childProcessId)->not->toBe(-1);
+    $isChild = $childProcessId === 0;
+    $connectionName = $isChild ? 'teams_invitation_second' : 'teams_invitation_first';
+    $ownMarker = $barrier.'/'.($isChild ? 'second' : 'first');
+    $peerMarker = $barrier.'/'.($isChild ? 'first' : 'second');
+    $resultFile = $barrier.'/'.($isChild ? 'child-result' : 'parent-result');
+
+    try {
+        config()->set("database.connections.{$connectionName}", config('database.connections.pgsql'));
+        DB::setDefaultConnection($connectionName);
+        DB::connection($connectionName)->statement("set lock_timeout = '8s'");
+        Notification::fake();
+        file_put_contents($ownMarker, 'ready');
+        $deadline = microtime(true) + 10;
+
+        while (! file_exists($peerMarker)) {
+            if (microtime(true) >= $deadline) {
+                throw new RuntimeException('The other connection did not reach the invitation barrier.');
+            }
+
+            usleep(10_000);
+        }
+
+        app(CreateTeamInvitationHandler::class)->handle(
+            new CreateTeamInvitation($team->id, $owner->id, 'race@example.com', TeamRole::Member),
+        );
+        file_put_contents($resultFile, 'created');
+    } catch (TeamInvitationCreationRejected $exception) {
+        file_put_contents($resultFile, 'duplicate');
+    } catch (Throwable $exception) {
+        file_put_contents($resultFile, $exception::class.': '.$exception->getMessage());
+    }
+
+    if ($isChild) {
+        exit(0);
+    }
+
+    pcntl_waitpid($childProcessId, $status);
+    DB::setDefaultConnection('pgsql');
+    $results = [
+        file_get_contents($barrier.'/parent-result'),
+        file_exists($barrier.'/child-result') ? file_get_contents($barrier.'/child-result') : 'Child process exited without a result.',
+    ];
+
+    foreach (glob($barrier.'/*') ?: [] as $file) {
+        unlink($file);
+    }
+
+    rmdir($barrier);
+    sort($results);
+
+    expect($results)->toBe(['created', 'duplicate'])
+        ->and(pcntl_wexitstatus($status))->toBe(0)
+        ->and(TeamInvitation::query()
+            ->where('team_id', $team->id)->where('email', 'race@example.com')->count())->toBe(1);
 });
