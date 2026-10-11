@@ -7,7 +7,6 @@
         "laravel",
         "framework"
     ],
-    "license": "MIT",
     "require": {
         "php": "^8.3",
         "inertiajs/inertia-laravel": "^3.0",
@@ -47,8 +46,8 @@
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
-            "@php artisan key:generate",
-            "@php artisan migrate --force",
+            "@php artisan key:generate --no-interaction",
+            "@php artisan migrate --force --no-interaction",
             "npm ci",
             "npm run build"
         ],
@@ -65,6 +64,7 @@
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "npm run check",
+            "npm audit --audit-level=high",
             "@architecture",
             "npm run types:check",
             "@test"
