@@ -24,7 +24,7 @@ trait RedirectsToCurrentTeam
 
         abort_if(! $user, 403);
 
-        $team = app(TeamQueries::class)->currentForUser($user->id);
+        $team = app(TeamQueries::class)->currentOrPersonalForUser($user->id);
 
         abort_if(! $team, 403);
 

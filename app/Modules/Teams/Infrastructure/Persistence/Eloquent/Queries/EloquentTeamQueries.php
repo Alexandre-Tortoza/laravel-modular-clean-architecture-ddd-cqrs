@@ -23,7 +23,7 @@ class EloquentTeamQueries implements TeamQueries
         return array_values($user->teams()
             ->orderBy('teams.name')
             ->get()
-            ->map(fn (Team $team): TeamData => $this->teamData($user, $team, $includeCurrent))
+            ->map(fn (Team $team): TeamData => $this->teamData($user, $team))
             ->filter(fn (TeamData $team): bool => $includeCurrent || ! $team->isCurrent)
             ->values()
             ->all());
@@ -34,7 +34,15 @@ class EloquentTeamQueries implements TeamQueries
         $user = User::query()->findOrFail($userId);
         $team = $user->currentTeam;
 
-        return $team instanceof Team ? $this->teamData($user, $team, true) : null;
+        return $team instanceof Team ? $this->teamData($user, $team) : null;
+    }
+
+    public function currentOrPersonalForUser(int $userId): ?TeamData
+    {
+        $user = User::query()->findOrFail($userId);
+        $team = $user->currentTeam ?? $user->personalTeam();
+
+        return $team instanceof Team ? $this->teamData($user, $team) : null;
     }
 
     public function permissionsFor(int $userId, int $teamId): TeamPermissionsData
@@ -60,7 +68,7 @@ class EloquentTeamQueries implements TeamQueries
         $team = Team::query()->findOrFail($teamId);
 
         return new TeamEditData(
-            $this->teamData($user, $team, true),
+            $this->teamData($user, $team),
             array_values($team->members()->get()->map(function (User $member): array {
                 $membership = $member->getRelation('pivot');
                 $role = $membership instanceof Membership ? $membership->role : TeamRole::Member;
@@ -109,7 +117,7 @@ class EloquentTeamQueries implements TeamQueries
         return $invitation instanceof TeamInvitation ? $this->pendingInvitationData($invitation) : null;
     }
 
-    private function teamData(User $user, Team $team, bool $includeCurrent): TeamData
+    private function teamData(User $user, Team $team): TeamData
     {
         return new TeamData(
             id: $team->id,
@@ -117,7 +125,7 @@ class EloquentTeamQueries implements TeamQueries
             slug: $team->slug,
             isPersonal: $team->is_personal,
             role: $user->teamRole($team),
-            isCurrent: $includeCurrent && $user->isCurrentTeam($team),
+            isCurrent: $user->isCurrentTeam($team),
         );
     }
 

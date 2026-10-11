@@ -8,6 +8,7 @@ use App\Modules\Teams\Application\Commands\CancelTeamInvitation;
 use App\Modules\Teams\Application\Commands\CreateTeamInvitation;
 use App\Modules\Teams\Application\Commands\DeclineTeamInvitation;
 use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
+use App\Modules\Teams\Application\Exceptions\TeamInvitationResponseRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
@@ -17,6 +18,7 @@ use App\Modules\Teams\Presentation\Http\Requests\RespondToTeamInvitationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class TeamInvitationController extends Controller
@@ -64,7 +66,11 @@ class TeamInvitationController extends Controller
      */
     public function accept(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
-        $handler->accept(new AcceptTeamInvitation($request->user()->id, $invitation->id));
+        try {
+            $handler->accept(new AcceptTeamInvitation($request->user()->id, $invitation->id));
+        } catch (TeamInvitationResponseRejected $exception) {
+            throw ValidationException::withMessages(['invitation' => $exception->getMessage()]);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation accepted.')]);
 
@@ -76,7 +82,11 @@ class TeamInvitationController extends Controller
      */
     public function decline(RespondToTeamInvitationRequest $request, TeamInvitation $invitation, TeamInvitationHandler $handler): RedirectResponse
     {
-        $handler->decline(new DeclineTeamInvitation($invitation->id));
+        try {
+            $handler->decline(new DeclineTeamInvitation($request->user()->id, $invitation->id));
+        } catch (TeamInvitationResponseRejected $exception) {
+            throw ValidationException::withMessages(['invitation' => $exception->getMessage()]);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation declined.')]);
 

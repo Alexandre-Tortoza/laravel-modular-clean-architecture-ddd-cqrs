@@ -12,6 +12,7 @@ arch('teams domain isolation')
         'Illuminate',
         'Laravel',
         'Inertia',
+        'App\\Models',
     ]);
 
 arch('teams application isolation')
@@ -22,6 +23,7 @@ arch('teams application isolation')
         'Illuminate',
         'Laravel',
         'Inertia',
+        'App\\Models',
     ]);
 
 arch('profile application isolation')
@@ -32,6 +34,7 @@ arch('profile application isolation')
         'Illuminate',
         'Laravel',
         'Inertia',
+        'App\\Models',
     ]);
 
 arch('security application isolation')
@@ -42,6 +45,7 @@ arch('security application isolation')
         'Illuminate',
         'Laravel',
         'Inertia',
+        'App\\Models',
     ]);
 
 arch('teams application contracts are interfaces')
@@ -122,6 +126,22 @@ arch('profile and security do not use teams internals')
         'App\\Modules\\Teams\\Domain',
         'App\\Modules\\Teams\\Infrastructure',
         'App\\Modules\\Teams\\Presentation',
+    ]);
+
+arch('profile does not use security internals')
+    ->expect('App\\Modules\\Profile')
+    ->not->toUse([
+        'App\\Modules\\Security\\Domain',
+        'App\\Modules\\Security\\Infrastructure',
+        'App\\Modules\\Security\\Presentation',
+    ]);
+
+arch('security does not use profile internals')
+    ->expect('App\\Modules\\Security')
+    ->not->toUse([
+        'App\\Modules\\Profile\\Domain',
+        'App\\Modules\\Profile\\Infrastructure',
+        'App\\Modules\\Profile\\Presentation',
     ]);
 
 arch('teams production code has no debug helpers')

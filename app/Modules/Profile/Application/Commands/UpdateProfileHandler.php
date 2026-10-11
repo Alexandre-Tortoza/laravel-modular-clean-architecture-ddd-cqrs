@@ -10,6 +10,13 @@ class UpdateProfileHandler
 
     public function handle(UpdateProfile $command): void
     {
-        $this->profiles->update($command->userId, $command->name, $command->email);
+        $profile = $this->profiles->find($command->userId);
+
+        $this->profiles->update(
+            $command->userId,
+            $command->name,
+            $command->email,
+            $profile->email !== $command->email,
+        );
     }
 }

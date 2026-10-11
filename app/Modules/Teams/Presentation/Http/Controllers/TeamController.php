@@ -11,6 +11,7 @@ use App\Modules\Teams\Application\Commands\SwitchCurrentTeam;
 use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeam;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Requests\DeleteTeamRequest;
@@ -92,7 +93,11 @@ class TeamController extends Controller
     {
         abort_unless($request->user()->belongsToTeam($team), 403);
 
-        $lifecycle->switchCurrentTeam(new SwitchCurrentTeam($request->user()->id, $team->id));
+        try {
+            $lifecycle->switchCurrentTeam(new SwitchCurrentTeam($request->user()->id, $team->id));
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         return back();
     }
@@ -104,7 +109,11 @@ class TeamController extends Controller
     {
         Gate::authorize('leave', $team);
 
-        $lifecycle->leave(new LeaveTeam($request->user()->id, $team->id));
+        try {
+            $lifecycle->leave(new LeaveTeam($request->user()->id, $team->id));
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('You left the team ":name"', ['name' => $team->name])]);
 
@@ -116,7 +125,11 @@ class TeamController extends Controller
      */
     public function destroy(DeleteTeamRequest $request, Team $team, TeamLifecycleHandler $lifecycle): RedirectResponse
     {
-        $lifecycle->delete(new DeleteTeam($request->user()->id, $team->id));
+        try {
+            $lifecycle->delete(new DeleteTeam($request->user()->id, $team->id));
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team deleted.')]);
 

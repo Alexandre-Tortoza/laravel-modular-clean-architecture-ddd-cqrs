@@ -14,6 +14,8 @@ interface TeamQueries
 
     public function currentForUser(int $userId): ?TeamData;
 
+    public function currentOrPersonalForUser(int $userId): ?TeamData;
+
     public function permissionsFor(int $userId, int $teamId): TeamPermissionsData;
 
     public function editFor(int $userId, int $teamId): TeamEditData;

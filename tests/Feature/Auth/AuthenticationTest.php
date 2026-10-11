@@ -49,6 +49,20 @@ test('users can authenticate using the login screen', function () {
     $response->assertRedirect(route('dashboard'));
 });
 
+test('users without a selected current team are redirected to their personal team after login', function () {
+    $user = User::factory()->create();
+    $personalTeam = $user->personalTeam();
+    $user->update(['current_team_id' => null]);
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticated();
+    $response->assertRedirect(route('dashboard', ['current_team' => $personalTeam?->slug]));
+});
+
 test('passkey login response redirects to the current team dashboard', function () {
     $user = User::factory()->create();
 

@@ -54,3 +54,32 @@ test('returns no current team when a user has not selected one', function () {
 
     expect(app(TeamQueries::class)->currentForUser($user->id))->toBeNull();
 });
+
+test('resolves the personal team when a user has not selected a current team', function () {
+    $user = User::factory()->create();
+    $personalTeam = $user->personalTeam();
+    $user->update(['current_team_id' => null]);
+
+    $team = app(TeamQueries::class)->currentOrPersonalForUser($user->id);
+
+    expect($team?->id)->toBe($personalTeam?->id)
+        ->and($team?->isCurrent)->toBeFalse();
+});
+
+test('excludes the current team without changing its projection flag', function () {
+    $user = User::factory()->create();
+    $currentTeam = $user->personalTeam();
+    $otherTeam = Team::factory()->create(['name' => 'Product Team']);
+    $otherTeam->members()->attach($user, ['role' => TeamRole::Member->value]);
+
+    $queries = app(TeamQueries::class);
+    $withoutCurrent = $queries->forUser($user->id);
+    $withCurrent = $queries->forUser($user->id, includeCurrent: true);
+
+    expect($withoutCurrent)->toHaveCount(1)
+        ->and($withoutCurrent[0]->id)->toBe($otherTeam->id)
+        ->and($withoutCurrent[0]->isCurrent)->toBeFalse()
+        ->and($withCurrent)->toHaveCount(2)
+        ->and(collect($withCurrent)->firstWhere('id', $currentTeam?->id)?->isCurrent)->toBeTrue()
+        ->and(collect($withCurrent)->firstWhere('id', $otherTeam->id)?->isCurrent)->toBeFalse();
+});
