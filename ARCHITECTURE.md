@@ -46,6 +46,8 @@ npm run build
 
 `tests/Architecture/TeamsArchitectureTest.php` and `tests/Architecture/ContractsArchitectureTest.php` check the Domain and Application dependency directions, module-boundary imports, contract signatures, model/factory placement, immutability, and prohibited debug helpers for the migrated modules. The Team Domain rule was proven with a temporary `Illuminate` dependency: it failed as expected, then the fixture was removed. The suite is intentionally scoped; framework adapters and legacy compatibility code are not hidden through broad namespace exclusions.
 
+Architecture tests are static boundary checks, not proof that dynamic calls cannot bypass a boundary or that a write is correct. Feature and integration tests continue to validate HTTP behavior, authorization, database effects, factories, providers, and the scheduled invitation cleanup.
+
 ## Next slices
 
 Fortify's own reset-password action, passkeys, and two-factor lifecycle remain framework adapters. The global authentication model remains an explicit compatibility boundary. Future application capabilities should be added from real code and receive behavior coverage plus architecture rules before their migration; they should not be created merely to fill the module tree.
