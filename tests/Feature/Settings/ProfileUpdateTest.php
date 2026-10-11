@@ -1,7 +1,7 @@
 <?php
 
-use App\Concerns\ProfileValidationRules;
 use App\Models\User;
+use App\Modules\Profile\Presentation\Http\Concerns\ProfileValidationRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Facades\Validator;
 

@@ -2,7 +2,7 @@
 
 namespace App\Modules\Profile\Presentation\Http\Requests;
 
-use App\Concerns\ProfileValidationRules;
+use App\Modules\Profile\Presentation\Http\Concerns\ProfileValidationRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 

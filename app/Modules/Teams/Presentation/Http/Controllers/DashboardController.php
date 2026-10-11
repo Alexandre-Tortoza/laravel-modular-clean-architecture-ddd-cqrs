@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Modules\Teams\Presentation\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use Illuminate\Http\Request;
 use Inertia\Inertia;

@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\DashboardController;
+use App\Modules\Teams\Presentation\Http\Controllers\DashboardController;
 use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
