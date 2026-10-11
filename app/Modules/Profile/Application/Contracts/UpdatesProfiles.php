@@ -6,7 +6,7 @@ use App\Modules\Profile\Application\Data\ProfileData;
 
 interface UpdatesProfiles
 {
-    public function find(int $userId): ProfileData;
+    public function findForUpdate(int $userId): ProfileData;
 
     public function update(int $userId, string $name, string $email, bool $invalidateEmailVerification): void;
 }

@@ -86,5 +86,5 @@ jobs:
           php artisan key:generate --no-interaction
           php artisan migrate:fresh --force --no-interaction
 
-      - name: Run PostgreSQL concurrency test
-        run: php artisan test --compact tests/Concurrency/TeamsConcurrencyTest.php
+      - name: Run PostgreSQL concurrency tests
+        run: php artisan test --compact --testsuite=Concurrency

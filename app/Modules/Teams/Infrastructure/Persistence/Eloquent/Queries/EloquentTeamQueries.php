@@ -3,6 +3,7 @@
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Queries;
 
 use App\Models\User;
+use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Application\Data\PendingTeamInvitationData;
 use App\Modules\Teams\Application\Data\TeamData;
@@ -16,6 +17,8 @@ use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 
 class EloquentTeamQueries implements TeamQueries
 {
+    public function __construct(private TeamClock $clock) {}
+
     public function forUser(int $userId, bool $includeCurrent = false): array
     {
         $user = User::query()->findOrFail($userId);
@@ -90,13 +93,15 @@ class EloquentTeamQueries implements TeamQueries
 
     public function pendingInvitationsForEmail(string $email): array
     {
+        $currentTime = $this->clock->now();
+
         return array_values(TeamInvitation::query()
             ->with(['inviter', 'team'])
             ->whereRaw('LOWER(email) = ?', [strtolower($email)])
             ->whereNull('accepted_at')
             ->where(fn ($query) => $query
                 ->whereNull('expires_at')
-                ->orWhere('expires_at', '>=', now()))
+                ->orWhere('expires_at', '>', $currentTime))
             ->latest()
             ->get()
             ->map(fn (TeamInvitation $invitation): PendingTeamInvitationData => $this->pendingInvitationData($invitation))
@@ -105,13 +110,15 @@ class EloquentTeamQueries implements TeamQueries
 
     public function pendingInvitationByCode(string $code): ?PendingTeamInvitationData
     {
+        $currentTime = $this->clock->now();
+
         $invitation = TeamInvitation::query()
             ->with('team')
             ->where('code', $code)
             ->whereNull('accepted_at')
             ->where(fn ($query) => $query
                 ->whereNull('expires_at')
-                ->orWhere('expires_at', '>=', now()))
+                ->orWhere('expires_at', '>', $currentTime))
             ->first();
 
         return $invitation instanceof TeamInvitation ? $this->pendingInvitationData($invitation) : null;

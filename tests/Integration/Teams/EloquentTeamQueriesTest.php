@@ -48,6 +48,25 @@ test('returns current team permissions and pending invitation projections', func
         ->and($queries->pendingInvitationByCode('missing'))->toBeNull();
 });
 
+test('pending invitation queries exclude an invitation at its expiration time', function () {
+    $this->travelTo('2026-01-01 12:00:00');
+
+    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $invitation = TeamInvitation::factory()->create([
+        'email' => $recipient->email,
+        'expires_at' => '2026-01-01 12:01:00',
+    ]);
+    $queries = app(TeamQueries::class);
+
+    expect($queries->pendingInvitationsForEmail($recipient->email))->toHaveCount(1)
+        ->and($queries->pendingInvitationByCode($invitation->code))->not->toBeNull();
+
+    $this->travelTo('2026-01-01 12:01:00');
+
+    expect($queries->pendingInvitationsForEmail($recipient->email))->toBe([])
+        ->and($queries->pendingInvitationByCode($invitation->code))->toBeNull();
+});
+
 test('returns no current team when a user has not selected one', function () {
     $user = User::factory()->create();
     $user->update(['current_team_id' => null]);

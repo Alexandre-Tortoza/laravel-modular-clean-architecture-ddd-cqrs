@@ -14,6 +14,7 @@ test('application contracts do not expose framework or infrastructure types', fu
         'App\\Modules\\Teams\\Application\\Contracts\\RunsTeamTransactions',
         'App\\Modules\\Teams\\Application\\Contracts\\TeamQueries',
         'App\\Modules\\Profile\\Application\\Contracts\\DeletesProfiles',
+        'App\\Modules\\Profile\\Application\\Contracts\\RunsProfileTransactions',
         'App\\Modules\\Profile\\Application\\Contracts\\UpdatesProfiles',
         'App\\Modules\\Security\\Application\\Contracts\\UpdatesPasswords',
     ];

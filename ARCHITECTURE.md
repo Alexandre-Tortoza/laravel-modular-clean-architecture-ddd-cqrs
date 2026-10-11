@@ -8,7 +8,7 @@ This repository is being migrated incrementally to a modular Laravel monolith. T
 
 Completed Teams write slices are **create team**, **team lifecycle** (update, switch, leave, delete), **membership management**, and **invitations** (create, cancel, accept, decline, and expiry pruning). Each write is represented by an explicit immutable command and handled through direct dependency injection; no command bus or mediator is used.
 
-The write handlers declare their transaction boundary through `RunsTeamTransactions`; the Eloquent adapter implements that boundary while repositories only perform persistence and locking. Notifications are sent after the write completes, outside the database transaction.
+The write handlers declare their transaction boundary through `RunsTeamTransactions`; the Eloquent adapter implements that boundary. The invitation repository currently also decides inviter permissions, assignable roles, duplicate invitations, existing membership, and expiration. Moving these decisions to pure rules called by the Application inside the transaction remains a follow-up; persistence and locking stay in the adapter. Notifications are sent after the write completes, outside the database transaction.
 
 `HTTP/Inertia request → command/handler → Application contract → Eloquent adapter → database`
 
@@ -16,7 +16,7 @@ The public routes retain their validation, authorization, redirects, flash messa
 
 `TeamQueries` is the public read API currently used by the dashboard, Inertia shared props, Fortify login invitation context, and post-authentication redirects. It returns immutable data objects rather than Eloquent models.
 
-`Profile` contains explicit update and deletion commands, along with its structural validation rules. `Security` contains the password-update command. Their HTTP controllers remain compatibility adapters in the existing settings route tree.
+`Profile` contains explicit update and deletion commands, along with its structural validation rules. Profile updates read the user under lock and compare and save the email within one transaction declared by `RunsProfileTransactions`. `Security` contains the password-update command. Their HTTP controllers remain compatibility adapters in the existing settings route tree.
 
 ## Module boundaries
 

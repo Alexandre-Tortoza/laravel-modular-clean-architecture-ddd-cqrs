@@ -8,22 +8,21 @@ use App\Modules\Profile\Application\Data\ProfileData;
 
 class EloquentProfileUpdater implements UpdatesProfiles
 {
-    public function find(int $userId): ProfileData
+    public function findForUpdate(int $userId): ProfileData
     {
-        $user = User::query()->findOrFail($userId);
+        $user = User::query()->lockForUpdate()->findOrFail($userId);
 
         return new ProfileData($user->id, $user->email);
     }
 
     public function update(int $userId, string $name, string $email, bool $invalidateEmailVerification): void
     {
-        $user = User::query()->findOrFail($userId);
-        $user->fill(['name' => $name, 'email' => $email]);
+        $attributes = ['name' => $name, 'email' => $email];
 
         if ($invalidateEmailVerification) {
-            $user->email_verified_at = null;
+            $attributes['email_verified_at'] = null;
         }
 
-        $user->save();
+        User::query()->whereKey($userId)->update($attributes);
     }
 }
