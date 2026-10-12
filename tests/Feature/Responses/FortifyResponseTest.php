@@ -3,9 +3,11 @@
 use App\Http\Responses\LoginResponse;
 use App\Http\Responses\TwoFactorLoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Support\UserWithPersonalTeam;
 
 function fortifyResponseRequest(?User $user, bool $wantsJson): Request
 {
@@ -30,9 +32,9 @@ test('returns JSON responses for Fortify flows', function () {
 });
 
 test('redirects browser Fortify flows through the users current team', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $request = fortifyResponseRequest($user, wantsJson: false);
-    $teamSlug = $user->personalTeam()->slug;
+    $teamSlug = Team::query()->findOrFail($user->current_team_id)->slug;
 
     $login = (new LoginResponse)->toResponse($request);
     $twoFactor = (new TwoFactorLoginResponse)->toResponse($request);

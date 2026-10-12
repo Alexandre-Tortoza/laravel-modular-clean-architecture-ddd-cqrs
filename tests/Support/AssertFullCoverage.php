@@ -26,10 +26,10 @@ if (($metadata['executableLines'] ?? 0) !== ($metadata['executedLines'] ?? -1)) 
 $uncoveredBranches = [];
 
 $unreachableXdebugBranches = [
-    'app/Enums/TeamRole.php::App\\Enums\\TeamRole::permissions' => ['27-28', '33'],
-    'app/Enums/TeamRole.php::App\\Enums\\TeamRole::hasPermission' => ['42'],
-    'app/Enums/TeamRole.php::App\\Enums\\TeamRole::level' => ['52-54'],
-    'app/Rules/TeamName.php::App\\Rules\\TeamName::validate' => ['20', '22'],
+    'app/Modules/Teams/Domain/Enums/TeamRole.php::App\\Modules\\Teams\\Domain\\Enums\\TeamRole::permissions' => ['22-23', '28'],
+    'app/Modules/Teams/Domain/Enums/TeamRole.php::App\\Modules\\Teams\\Domain\\Enums\\TeamRole::hasPermission' => ['34'],
+    'app/Modules/Teams/Domain/Enums/TeamRole.php::App\\Modules\\Teams\\Domain\\Enums\\TeamRole::level' => ['40-42'],
+    'app/Modules/Teams/Presentation/Rules/TeamName.php::App\\Modules\\Teams\\Presentation\\Rules\\TeamName::validate' => ['20', '22'],
 ];
 
 foreach (file($coverageDirectory.'/coverage.jsonl', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {

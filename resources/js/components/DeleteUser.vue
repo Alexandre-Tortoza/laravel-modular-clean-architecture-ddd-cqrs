@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
 import { useTemplateRef } from 'vue';
-import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import ProfileController from '@/actions/App/Modules/Profile/Presentation/Http/Controllers/ProfileController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
@@ -66,6 +66,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                 you would like to permanently delete your
                                 account.
                             </DialogDescription>
+                            <InputError :message="errors.account" />
                         </DialogHeader>
 
                         <div class="grid gap-2">

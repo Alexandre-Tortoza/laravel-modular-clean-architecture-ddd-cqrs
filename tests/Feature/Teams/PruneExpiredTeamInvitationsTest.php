@@ -1,17 +1,17 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
-use App\Models\User;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use Tests\Support\UserWithPersonalTeam;
 
 test('expired invitations are deleted by the scheduled cleanup', function () {
     $this->travelTo(now()->startOfDay());
 
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
 
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
     $expiredInvitation = TeamInvitation::factory()->expired()->create([
         'team_id' => $team->id,

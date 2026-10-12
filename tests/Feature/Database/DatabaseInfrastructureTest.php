@@ -1,17 +1,19 @@
 <?php
 
-use App\Enums\TeamRole;
-use App\Models\Team;
-use App\Models\TeamInvitation;
-use App\Models\User;
-use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Data\TeamInvitationData;
+use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\UserWithPersonalTeam;
 
 test('configures factory states and membership relationships', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->personal()->create();
     $trashedTeam = Team::factory()->trashed()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Admin]);
 
     $membership = $team->memberships()->firstOrFail();
 
@@ -19,27 +21,33 @@ test('configures factory states and membership relationships', function () {
         ->and($trashedTeam->trashed())->toBeTrue()
         ->and($membership->role)->toBe(TeamRole::Admin)
         ->and($membership->team->is($team))->toBeTrue()
-        ->and($membership->user->is($user))->toBeTrue();
+        ->and($membership->user_id === $user->id)->toBeTrue();
 });
 
 test('reports invitation lifecycle states', function () {
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $pending = TeamInvitation::factory()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $accepted = TeamInvitation::factory()->accepted()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
     $expired = TeamInvitation::factory()->expired()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
+    $notification = new TeamInvitationNotification(new TeamInvitationData(
+        $pending->id,
+        $pending->code,
+        $pending->email,
+        $team->id,
+        $team->name,
+        $owner->name,
+        $pending->role,
+    ));
+    $queries = app(TeamQueries::class);
 
-    expect($pending->isPending())->toBeTrue()
-        ->and($pending->isAccepted())->toBeFalse()
-        ->and($pending->isExpired())->toBeFalse()
-        ->and($accepted->isAccepted())->toBeTrue()
-        ->and($accepted->isPending())->toBeFalse()
-        ->and($expired->isExpired())->toBeTrue()
-        ->and($expired->isPending())->toBeFalse()
+    expect($queries->pendingInvitationByCode($pending->code))->not->toBeNull()
+        ->and($queries->pendingInvitationByCode($accepted->code))->toBeNull()
+        ->and($queries->pendingInvitationByCode($expired->code))->toBeNull()
         ->and($pending->getRouteKeyName())->toBe('code')
-        ->and((new TeamInvitationNotification($pending))->via($owner))->toBe(['mail'])
-        ->and((new TeamInvitationNotification($pending))->toArray($owner))->toBe([
+        ->and($notification->via($owner))->toBe(['mail'])
+        ->and($notification->toArray($owner))->toBe([
             'invitation_id' => $pending->id,
             'team_id' => $team->id,
             'team_name' => $team->name,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import TeamInvitationController from '@/actions/App/Http/Controllers/Teams/TeamInvitationController';
+import TeamInvitationController from '@/actions/App/Modules/Teams/Presentation/Http/Controllers/TeamInvitationController';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
