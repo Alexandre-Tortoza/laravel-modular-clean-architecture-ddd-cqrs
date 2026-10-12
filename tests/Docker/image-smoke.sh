@@ -101,7 +101,7 @@ request /login >"$temporary_directory/login"
 ! grep -Eq '^Status: [45]' "$temporary_directory/login"
 grep -q '/build/assets/' "$temporary_directory/login"
 docker logs "$container" >"$temporary_directory/fpm-logs" 2>&1
-grep -q '/index.php' "$temporary_directory/fpm-logs"
+grep -q 'GET /up' "$temporary_directory/fpm-logs"
 
 request /slow /tmp/image-smoke/slow.php >"$temporary_directory/slow-response" &
 request_pid=$!
