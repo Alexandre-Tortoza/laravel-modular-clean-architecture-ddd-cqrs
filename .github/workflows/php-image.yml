@@ -58,7 +58,25 @@ jobs:
       - name: Verify ignored secrets never enter image layers
         run: |
           docker image save laravel-php:smoke --output /tmp/php-image.tar
-          if grep -aqE 'DOCKER_CONTEXT_(SECRET|AUTH|LOG|CACHE|HOT|ASSET)_CANARY' /tmp/php-image.tar; then
-            echo 'An ignored context canary entered an image layer.' >&2
-            exit 1
-          fi
+          python - <<'PY'
+          import gzip
+          import re
+          import tarfile
+
+          canary = re.compile(rb'DOCKER_CONTEXT_(SECRET|AUTH|LOG|CACHE|HOT|ASSET)_CANARY')
+          with tarfile.open('/tmp/php-image.tar') as image:
+              for member in image:
+                  if not member.isfile():
+                      continue
+                  stream = image.extractfile(member)
+                  if stream.read(2) == b'\x1f\x8b':
+                      stream.seek(0)
+                      stream = gzip.GzipFile(fileobj=stream)
+                  else:
+                      stream.seek(0)
+                  previous = b''
+                  while chunk := stream.read(1024 * 1024):
+                      if canary.search(previous + chunk):
+                          raise SystemExit('An ignored context canary entered an image layer.')
+                      previous = chunk[-128:]
+          PY
