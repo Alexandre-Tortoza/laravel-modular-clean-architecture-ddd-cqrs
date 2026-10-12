@@ -120,6 +120,33 @@ test('returns no current team when a user has not selected one', function () {
     expect(app(TeamQueries::class)->currentForUser($user->id))->toBeNull();
 });
 
+test('current team queries ignore an invalid selection without repairing it', function (string $invalidSelection, bool $hasPersonalTeam): void {
+    $user = $hasPersonalTeam ? UserWithPersonalTeam::create() : User::factory()->create();
+    $personalTeamId = $user->current_team_id;
+    $otherOwner = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $otherOwner->id, 'role' => TeamRole::Owner]);
+
+    if ($invalidSelection === 'deleted') {
+        $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+        $team->delete();
+    }
+
+    app(TeamSelectionAccounts::class)->select($user->id, $team->id);
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $queries = app(TeamQueries::class);
+    $current = $queries->currentForUser($user->id);
+    $fallback = $queries->currentOrPersonalForUser($user->id);
+    $executedQueries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($current)->toBeNull();
+    expect($fallback?->id)->toBe($personalTeamId);
+    expect($user->fresh()->current_team_id)->toBe($team->id);
+    expect(collect($executedQueries)->every(fn (array $query): bool => str_starts_with(strtolower($query['query']), 'select')))->toBeTrue();
+})->with(['non-member', 'deleted'])->with([false, true]);
+
 test('resolves the personal team when a user has not selected a current team', function () {
     $user = UserWithPersonalTeam::create();
     $personalTeam = UserWithPersonalTeam::personalTeam($user);

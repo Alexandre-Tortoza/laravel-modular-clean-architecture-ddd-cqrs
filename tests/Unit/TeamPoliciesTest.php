@@ -2,11 +2,22 @@
 
 use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\InvalidTeamName;
 use App\Modules\Teams\Domain\Exceptions\TeamInvitationCreationRejected;
 use App\Modules\Teams\Domain\Exceptions\TeamInvitationResponseRejected;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Policies\InvitationPolicy;
 use App\Modules\Teams\Domain\Policies\TeamLifecyclePolicy;
+use App\Modules\Teams\Domain\Policies\TeamNamePolicy;
+
+it('validates team name boundaries without Laravel boot', function (): void {
+    $policy = new TeamNamePolicy;
+
+    expect(fn () => $policy->assertValid('   '))->toThrow(InvalidTeamName::class, 'The team name is required.');
+    expect(fn () => $policy->assertValid(str_repeat('á', 256)))
+        ->toThrow(InvalidTeamName::class, 'The team name may not be greater than 255 characters.');
+    expect(fn () => $policy->assertValid(str_repeat('á', 255)))->not->toThrow(Throwable::class);
+});
 
 it('rejects an owner invitation and a duplicate pending recipient without Laravel boot', function (): void {
     $policy = new InvitationPolicy;
@@ -24,7 +35,7 @@ it('rejects an invitation at its expiration instant without Laravel boot', funct
     $policy = new InvitationPolicy;
     $now = new DateTimeImmutable('2026-01-04 12:00:00');
 
-    expect(fn () => $policy->assertCanRespond('user@example.com', 'USER@example.com', $now, null, $now))
+    expect(fn () => $policy->assertCanRespond('user@example.com', 'USER@example.com', $now, null, $now, true))
         ->toThrow(TeamInvitationResponseRejected::class);
 });
 

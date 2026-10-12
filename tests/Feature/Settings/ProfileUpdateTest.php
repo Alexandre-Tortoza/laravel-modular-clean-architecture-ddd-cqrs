@@ -2,10 +2,14 @@
 
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Profile\Presentation\Http\Concerns\ProfileValidationRules;
+use App\Modules\Teams\Application\Commands\CreateTeam;
+use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Tests\Support\UserWithPersonalTeam;
 
@@ -136,6 +140,32 @@ test('account deletion is rejected when a personal team has another member', fun
     $this->assertDatabaseHas('teams', ['id' => $personalTeam->id, 'deleted_at' => null]);
 });
 
+test('a changed account team snapshot rejects deletion and preserves the session', function (): void {
+    $user = User::factory()->create();
+    $changed = false;
+    DB::listen(function (QueryExecuted $query) use ($user, &$changed): void {
+        if ($changed || ! str_starts_with($query->sql, 'select * from "teams"') || ! str_contains($query->sql, '"team_members"')) {
+            return;
+        }
+
+        $changed = true;
+        app(CreateTeamHandler::class)->handle(new CreateTeam($user->id, 'Team added after snapshot'));
+    });
+
+    $this->actingAs($user)->withSession(['deletion_marker' => 'keep'])
+        ->from(route('profile.edit'))
+        ->delete(route('profile.destroy'), ['password' => 'password'])
+        ->assertRedirect(route('profile.edit'))
+        ->assertSessionHasErrors(['account' => 'The account teams changed. Please retry deleting your account.'])
+        ->assertSessionHas('deletion_marker', 'keep');
+
+    expect($changed)->toBeTrue();
+    $this->assertAuthenticatedAs($user);
+    $this->assertModelExists($user);
+    $this->assertDatabaseCount('teams', 0);
+    $this->assertDatabaseCount('team_members', 0);
+});
+
 test('account deletion closes a sole personal team and revokes linked invitations', function () {
     $user = UserWithPersonalTeam::create(['email' => 'deleting@example.com']);
     $personalTeam = UserWithPersonalTeam::personalTeam($user);
@@ -153,6 +183,12 @@ test('account deletion closes a sole personal team and revokes linked invitation
         'email' => $user->email,
         'invited_by' => $otherOwner->id,
     ]);
+    $acceptedInvitation = TeamInvitation::factory()->create([
+        'team_id' => $sharedTeam->id,
+        'email' => $user->email,
+        'invited_by' => $otherOwner->id,
+        'accepted_at' => now(),
+    ]);
 
     $response = $this->actingAs($user)
         ->delete(route('profile.destroy'), ['password' => 'password']);
@@ -166,6 +202,9 @@ test('account deletion closes a sole personal team and revokes linked invitation
     $this->assertDatabaseMissing('team_members', ['team_id' => $sharedTeam->id, 'user_id' => $user->id]);
     $this->assertModelMissing($sentInvitation);
     $this->assertModelMissing($receivedInvitation);
+    $this->assertModelExists($acceptedInvitation);
+    $this->assertDatabaseHas('teams', ['id' => $sharedTeam->id, 'deleted_at' => null]);
+    $this->assertDatabaseHas('team_members', ['team_id' => $sharedTeam->id, 'user_id' => $otherOwner->id, 'role' => TeamRole::Owner->value]);
 });
 
 test('profile validation applies email uniqueness for new and existing users', function () {

@@ -12,6 +12,7 @@ use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Application\Data\TeamDeletionData;
 use App\Modules\Teams\Application\Data\TeamMembershipData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
@@ -50,9 +51,13 @@ class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
 
     public function deletionForUpdate(int $teamId, int $userId): TeamDeletionData
     {
-        $candidateTeams = function ($query) use ($teamId, $userId): void {
+        $selectingUserIds = $this->selection->userIdsSelectingTeam($teamId);
+        $personalTeamIds = Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->whereIn('team_members.user_id', $selectingUserIds)->where('teams.is_personal', true)
+            ->where('team_members.role', TeamRole::Owner->value)->pluck('teams.id')->all();
+        $candidateTeams = function ($query) use ($teamId, $userId, $personalTeamIds): void {
             $query->whereKey($teamId)->orWhereIn('id', Membership::query()
-                ->select('team_id')->where('user_id', $userId));
+                ->select('team_id')->where('user_id', $userId))->orWhereIn('id', $personalTeamIds);
         };
         $teams = Team::query()->where($candidateTeams)
             ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -67,9 +72,15 @@ class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
 
         foreach ($users as $affectedUser) {
             if ($affectedUser->id !== $userId && $this->users->currentTeamIdFor($affectedUser->id) === $teamId) {
+                $personalTeamId = $this->personalTeamId($affectedUser->id);
+
+                if ($personalTeamId !== null && ! $teams->has($personalTeamId)) {
+                    throw new TeamOperationRejected('The available fallback teams changed. Please retry deleting the team.');
+                }
+
                 $affectedUsers[] = [
                     'userId' => $affectedUser->id,
-                    'personalTeamId' => $this->personalTeamId($affectedUser->id),
+                    'personalTeamId' => $personalTeamId,
                 ];
             }
         }
@@ -106,7 +117,7 @@ class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
         $teams = Team::query()->whereIn('id', Membership::query()
             ->select('team_id')->where('user_id', $accountId))
             ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        $this->selection->lockMany([$accountId]);
+        $user = $this->selection->lockMany([$accountId])[$accountId];
         $memberships = Membership::query()->where('user_id', $accountId)
             ->orderBy('team_id')->lockForUpdate()->get();
         $ownedTeams = [];
@@ -114,7 +125,11 @@ class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
         foreach ($memberships as $membership) {
             $team = $teams->get($membership->team_id);
 
-            if ($team === null || $membership->role !== TeamRole::Owner) {
+            if ($team === null) {
+                return new AccountTeamDeletionData([], $user->email, false);
+            }
+
+            if ($membership->role !== TeamRole::Owner) {
                 continue;
             }
 
@@ -125,13 +140,14 @@ class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
             ];
         }
 
-        return new AccountTeamDeletionData($ownedTeams);
+        return new AccountTeamDeletionData($ownedTeams, $user->email, true);
     }
 
     public function deleteResourcesForAccount(int $accountId, string $email, array $personalTeamIds): void
     {
         TeamInvitation::query()->where('invited_by', $accountId)
-            ->orWhereRaw('LOWER(email) = ?', [mb_strtolower($email)])->delete();
+            ->orWhere(fn ($query) => $query->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
+                ->whereNull('accepted_at'))->delete();
         Membership::query()->where('user_id', $accountId)->delete();
 
         foreach ($personalTeamIds as $teamId) {

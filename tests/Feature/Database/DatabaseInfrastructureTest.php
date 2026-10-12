@@ -6,6 +6,7 @@ use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use Database\Seeders\DemoDatabaseSeeder;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\UserWithPersonalTeam;
 
@@ -64,5 +65,7 @@ test('runs migrations in both directions and seeds the database', function () {
     $this->artisan('db:seed')->assertExitCode(0);
 
     expect(Schema::hasTable('agent_conversations'))->toBeTrue();
+    $this->assertDatabaseCount('users', 0);
+    $this->artisan('db:seed', ['--class' => DemoDatabaseSeeder::class])->assertExitCode(0);
     $this->assertDatabaseHas('users', ['email' => 'test@example.com']);
 });

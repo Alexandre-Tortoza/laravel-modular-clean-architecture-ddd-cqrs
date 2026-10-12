@@ -17,5 +17,6 @@ readonly class InvitationResponseData
         public TeamRole $role,
         public ?DateTimeImmutable $expiresAt,
         public ?DateTimeImmutable $acceptedAt,
+        public bool $userEmailIsVerified,
     ) {}
 }

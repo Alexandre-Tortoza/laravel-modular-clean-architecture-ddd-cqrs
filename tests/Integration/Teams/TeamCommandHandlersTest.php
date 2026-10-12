@@ -243,14 +243,18 @@ test('team and several user locks follow ascending ids with an intermediate acto
 
     app(ManagesTeams::class)->deletionForUpdate($team->id, $actor->id);
 
-    $locks = collect(DB::getQueryLog())
-        ->filter(fn (array $query): bool => str_contains(strtolower($query['query']), ' from "teams" ') || str_contains(strtolower($query['query']), ' from "users" '))
-        ->values();
+    $queries = collect(DB::getQueryLog());
+    $teamLocks = $queries->filter(fn (array $query): bool => str_starts_with($query['query'], 'select * from "teams"')
+        && str_contains($query['query'], 'order by "id" asc'));
+    $userLocks = $queries->filter(fn (array $query): bool => str_starts_with($query['query'], 'select * from "users"')
+        && str_contains($query['query'], 'where "users"."id" = ?'));
 
-    expect($locks->pluck('query')->first())->toContain('teams')
-        ->and($locks->filter(fn (array $query): bool => str_contains(strtolower($query['query']), ' from "users" ')
-                && str_contains(strtolower($query['query']), 'where "users"."id"')
-                && str_contains(strtolower($query['query']), ' limit 1'))
-            ->take(3)->pluck('bindings')->map(fn (array $bindings): int => (int) $bindings[0])->all())
+    expect($teamLocks)->toHaveCount(1);
+    expect($teamLocks->keys()->first())->toBeLessThan($userLocks->keys()->first());
+    expect($teamLocks->first()['bindings'])->toContain(
+        UserWithPersonalTeam::personalTeam($lowerIdMember)->id,
+        UserWithPersonalTeam::personalTeam($higherIdMember)->id,
+    );
+    expect($userLocks->pluck('bindings')->map(fn (array $bindings): int => (int) $bindings[0])->all())
         ->toBe([$lowerIdMember->id, $actor->id, $higherIdMember->id]);
 });

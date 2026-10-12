@@ -43,8 +43,12 @@ class InvitationPolicy
         }
     }
 
-    public function assertCanRespond(string $recipientEmail, string $userEmail, ?DateTimeImmutable $expiresAt, ?DateTimeImmutable $acceptedAt, DateTimeImmutable $now): void
+    public function assertCanRespond(string $recipientEmail, string $userEmail, ?DateTimeImmutable $expiresAt, ?DateTimeImmutable $acceptedAt, DateTimeImmutable $now, bool $userEmailIsVerified): void
     {
+        if (! $userEmailIsVerified) {
+            throw new TeamInvitationResponseRejected('Verify your current email address before responding to an invitation.');
+        }
+
         if (mb_strtolower($recipientEmail) !== mb_strtolower($userEmail)) {
             throw new TeamInvitationResponseRejected('This invitation was sent to a different email address.');
         }

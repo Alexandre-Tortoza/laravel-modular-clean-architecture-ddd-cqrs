@@ -18,7 +18,7 @@ class DeleteProfileHandler
     public function handle(DeleteProfile $command): void
     {
         $this->transactions->run(function () use ($command): void {
-            $result = $this->teams->deleteResourcesForAccount($command->userId, $command->email);
+            $result = $this->teams->deleteResourcesForAccount($command->userId);
 
             if (! $result->isAllowed) {
                 throw new ProfileDeletionRejected($result->message ?? 'The account cannot be deleted.');

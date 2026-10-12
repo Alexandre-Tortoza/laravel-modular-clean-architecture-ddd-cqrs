@@ -19,7 +19,7 @@ class EloquentTeamSelectionAccounts implements TeamSelectionAccounts
 
         foreach ($orderedIds as $id) {
             $user = User::query()->lockForUpdate()->findOrFail($id);
-            $records[$id] = new UserRecord($user->id, $user->name, $user->email, $user->avatar);
+            $records[$id] = new UserRecord($user->id, $user->name, $user->email, $user->avatar, $user->hasVerifiedEmail());
         }
 
         return $records;

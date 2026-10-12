@@ -30,7 +30,7 @@ test('create handler selects the new team after persisting it inside the transac
     $selection->shouldReceive('lockMany')->once()->with([3])->andReturnUsing(function () use (&$steps): array {
         $steps[] = 'lock';
 
-        return [3 => new UserRecord(3, 'Taylor', 'taylor@example.com', null)];
+        return [3 => new UserRecord(3, 'Taylor', 'taylor@example.com', null, true)];
     });
     $teams = Mockery::mock(CreatesTeams::class);
     $teams->shouldReceive('create')->once()->with(3, 'New Team', false)
@@ -51,7 +51,7 @@ test('create handler selects the new team after persisting it inside the transac
 
 test('accept handler selects the invitation team after persisting acceptance', function (): void {
     $steps = [];
-    $invitation = new InvitationResponseData(9, 7, 'new-team', 3, 'taylor@example.com', 'taylor@example.com', TeamRole::Member, null, null);
+    $invitation = new InvitationResponseData(9, 7, 'new-team', 3, 'taylor@example.com', 'taylor@example.com', TeamRole::Member, null, null, true);
     $transactions = Mockery::mock(RunsTeamTransactions::class);
     $transactions->shouldReceive('run')->once()->andReturnUsing(function ($callback) use (&$steps) {
         $steps[] = 'begin';

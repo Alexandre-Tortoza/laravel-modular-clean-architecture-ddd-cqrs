@@ -71,7 +71,7 @@ class EloquentTeamInvitationManager implements ManagesTeamInvitations
 
         return new InvitationResponseData($invitation->id, $team->id, $team->slug, $user->id,
             $invitation->email, $user->email, $invitation->role,
-            $invitation->expires_at?->toDateTimeImmutable(), $invitation->accepted_at?->toDateTimeImmutable());
+            $invitation->expires_at?->toDateTimeImmutable(), $invitation->accepted_at?->toDateTimeImmutable(), $user->emailIsVerified);
     }
 
     public function accept(InvitationResponseData $invitation, DateTimeImmutable $acceptedAt): void

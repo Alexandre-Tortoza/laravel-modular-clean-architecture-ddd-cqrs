@@ -14,9 +14,14 @@ class AccountTeamLifecycleService implements AccountTeamLifecycle
         private AccountTeamDeletionPolicy $policy,
     ) {}
 
-    public function deleteResourcesForAccount(int $accountId, string $email): AccountTeamDeletionResult
+    public function deleteResourcesForAccount(int $accountId): AccountTeamDeletionResult
     {
         $deletion = $this->teams->deletionDataForAccount($accountId);
+
+        if (! $deletion->membershipsAreProtected) {
+            return new AccountTeamDeletionResult(false, 'The account teams changed. Please retry deleting your account.');
+        }
+
         $message = $this->policy->rejectionMessage($deletion->ownedTeams);
 
         if ($message !== null) {
@@ -27,7 +32,7 @@ class AccountTeamLifecycleService implements AccountTeamLifecycle
             fn (array $team): int => $team['id'],
             array_filter($deletion->ownedTeams, fn (array $team): bool => $team['isPersonal']),
         ));
-        $this->teams->deleteResourcesForAccount($accountId, $email, $personalTeamIds);
+        $this->teams->deleteResourcesForAccount($accountId, $deletion->email, $personalTeamIds);
 
         return new AccountTeamDeletionResult(true);
     }

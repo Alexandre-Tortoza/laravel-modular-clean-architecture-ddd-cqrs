@@ -7,7 +7,7 @@ use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('web')->group(function (): void {
-    Route::middleware(['auth'])->group(function (): void {
+    Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
         Route::delete('invitations/{invitation}', [TeamInvitationController::class, 'decline'])->name('invitations.decline');
     });

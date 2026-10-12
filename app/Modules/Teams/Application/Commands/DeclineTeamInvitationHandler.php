@@ -16,7 +16,7 @@ class DeclineTeamInvitationHandler
         $this->transactions->run(function () use ($command): void {
             $invitation = $this->invitations->responseForUpdate($command->userId, $command->invitationId);
             $this->policy->assertCanRespond($invitation->recipientEmail, $invitation->userEmail,
-                $invitation->expiresAt, $invitation->acceptedAt, $this->clock->now());
+                $invitation->expiresAt, $invitation->acceptedAt, $this->clock->now(), $invitation->userEmailIsVerified);
             $this->invitations->decline($command->invitationId);
         });
     }

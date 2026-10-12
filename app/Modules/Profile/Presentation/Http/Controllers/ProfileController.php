@@ -51,7 +51,7 @@ class ProfileController extends Controller
         $user = $request->user();
 
         try {
-            $deleteProfile->handle(new DeleteProfile($user->id, $user->email));
+            $deleteProfile->handle(new DeleteProfile($user->id));
         } catch (ProfileDeletionRejected $exception) {
             throw ValidationException::withMessages(['account' => $exception->getMessage()]);
         }

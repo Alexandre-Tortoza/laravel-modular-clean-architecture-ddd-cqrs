@@ -45,9 +45,15 @@ class EloquentTeamQueries implements TeamQueries
     {
         $this->ensureUserExists($userId);
         $teamId = $this->users->currentTeamIdFor($userId);
-        $team = $teamId === null ? null : Team::query()->find($teamId);
+        $team = $teamId === null ? null : Team::query()
+            ->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', $userId)->where('teams.id', $teamId)
+            ->select('teams.*', 'team_members.role as membership_role')->first();
 
-        return $team === null ? null : $this->teamData($team, $userId, $teamId);
+        return $team === null ? null : new TeamData(
+            $team->id, $team->name, $team->slug, $team->is_personal,
+            TeamRole::from($team->getAttribute('membership_role')), true,
+        );
     }
 
     public function currentOrPersonalForUser(int $userId): ?TeamData

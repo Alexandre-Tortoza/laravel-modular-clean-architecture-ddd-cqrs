@@ -7,11 +7,16 @@ use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\CreateTeam;
 use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use Illuminate\Database\Seeder;
+use LogicException;
 
 class DemoPersonalTeamSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            throw new LogicException('Demo data may only be seeded in local or testing environments.');
+        }
+
         $user = app(UserDirectory::class)->findByEmail('test@example.com');
 
         if ($user === null) {

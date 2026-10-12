@@ -4,6 +4,8 @@ namespace App\Modules\Teams\Domain\Policies;
 
 use App\Modules\Teams\Domain\Exceptions\InvalidTeamName;
 
+use function trim;
+
 class TeamNamePolicy
 {
     public function assertValid(string $name): void

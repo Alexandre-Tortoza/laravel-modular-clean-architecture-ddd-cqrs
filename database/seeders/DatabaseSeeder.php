@@ -2,20 +2,12 @@
 
 namespace Database\Seeders;
 
-use App\Modules\Identity\Infrastructure\Persistence\Seeders\DemoUserSeeder;
-use App\Modules\Teams\Infrastructure\Persistence\Seeders\DemoPersonalTeamSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database.
+     * Seed application-required data only. Demonstration data is explicitly opt-in.
      */
-    public function run(): void
-    {
-        $this->call([
-            DemoUserSeeder::class,
-            DemoPersonalTeamSeeder::class,
-        ]);
-    }
+    public function run(): void {}
 }

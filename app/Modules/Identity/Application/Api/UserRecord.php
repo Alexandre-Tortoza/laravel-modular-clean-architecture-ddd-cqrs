@@ -9,5 +9,6 @@ readonly class UserRecord
         public string $name,
         public string $email,
         public ?string $avatar,
+        public bool $emailIsVerified,
     ) {}
 }

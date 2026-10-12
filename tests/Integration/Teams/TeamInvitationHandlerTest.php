@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Profile\Application\Commands\UpdateProfile;
+use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
 use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitation;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitationHandler;
@@ -21,6 +23,44 @@ use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Tests\Support\UserWithPersonalTeam;
+
+test('response handlers require verification of the current email', function (string $action) {
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'original@example.com']);
+    $selectedTeamId = $recipient->current_team_id;
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $invitation = TeamInvitation::factory()->create([
+        'team_id' => $team->id,
+        'email' => 'invited@example.com',
+        'invited_by' => $owner->id,
+    ]);
+    app(UpdateProfileHandler::class)->handle(new UpdateProfile($recipient->id, $recipient->name, $invitation->email));
+    $handler = app($action === 'accept' ? AcceptTeamInvitationHandler::class : DeclineTeamInvitationHandler::class);
+    $command = $action === 'accept'
+        ? new AcceptTeamInvitation($recipient->id, $invitation->id)
+        : new DeclineTeamInvitation($recipient->id, $invitation->id);
+
+    expect(fn () => $handler->handle($command))
+        ->toThrow(TeamInvitationResponseRejected::class, 'Verify your current email address before responding to an invitation.');
+
+    $this->assertModelExists($invitation);
+    expect($invitation->fresh()->accepted_at)->toBeNull();
+    expect($recipient->fresh()->current_team_id)->toBe($selectedTeamId);
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse();
+
+    $recipient->fresh()->markEmailAsVerified();
+    $handler->handle($command);
+
+    if ($action === 'accept') {
+        expect($invitation->fresh()->accepted_at)->not->toBeNull();
+        expect($recipient->fresh()->current_team_id)->toBe($team->id);
+        expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeTrue();
+    } else {
+        $this->assertModelMissing($invitation);
+        expect($recipient->fresh()->current_team_id)->toBe($selectedTeamId);
+    }
+})->with(['accept', 'decline']);
 
 test('handler rejects owner invitations', function () {
     Notification::fake();

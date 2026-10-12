@@ -67,6 +67,6 @@ class EloquentUserDirectory implements UserDirectory
 
     private function record(User $user): UserRecord
     {
-        return new UserRecord($user->id, $user->name, $user->email, $user->avatar);
+        return new UserRecord($user->id, $user->name, $user->email, $user->avatar, $user->hasVerifiedEmail());
     }
 }

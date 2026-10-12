@@ -18,7 +18,7 @@ class AcceptTeamInvitationHandler
             $invitation = $this->invitations->responseForUpdate($command->userId, $command->invitationId);
             $now = $this->clock->now();
             $this->policy->assertCanRespond($invitation->recipientEmail, $invitation->userEmail,
-                $invitation->expiresAt, $invitation->acceptedAt, $now);
+                $invitation->expiresAt, $invitation->acceptedAt, $now, $invitation->userEmailIsVerified);
 
             $this->invitations->accept($invitation, $now);
             $this->selection->select($invitation->userId, $invitation->teamId);

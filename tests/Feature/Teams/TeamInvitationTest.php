@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Profile\Application\Commands\UpdateProfile;
+use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
 use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
@@ -8,6 +10,64 @@ use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\Notification;
 use Tests\Support\UserWithPersonalTeam;
+
+test('responding to an invitation requires verification of the current email', function (string $action, bool $json) {
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'original@example.com']);
+    $selectedTeamId = $recipient->current_team_id;
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $invitation = TeamInvitation::factory()->create([
+        'team_id' => $team->id,
+        'email' => 'invited@example.com',
+        'invited_by' => $owner->id,
+    ]);
+    app(UpdateProfileHandler::class)->handle(new UpdateProfile($recipient->id, $recipient->name, $invitation->email));
+
+    $this->actingAs($recipient->fresh());
+    $method = $action === 'accept' ? 'post' : 'delete';
+    $response = $this->{$method.($json ? 'Json' : '')}(route('invitations.'.$action, $invitation->code));
+
+    if ($json) {
+        $response->assertForbidden();
+    } else {
+        $response->assertRedirect(route('verification.notice'));
+    }
+
+    $this->assertModelExists($invitation);
+    expect($invitation->fresh()->accepted_at)->toBeNull();
+    expect($recipient->fresh()->current_team_id)->toBe($selectedTeamId);
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse();
+})->with(['accept', 'decline'])->with([false, true]);
+
+test('a stale verified HTTP identity cannot bypass the current email check', function (string $action, bool $json): void {
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'original@example.com']);
+    $selectedTeamId = $recipient->current_team_id;
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $invitation = TeamInvitation::factory()->create([
+        'team_id' => $team->id, 'email' => 'invited@example.com', 'invited_by' => $owner->id,
+    ]);
+    $this->actingAs($recipient)->from(route('teams.index'));
+    app(UpdateProfileHandler::class)->handle(new UpdateProfile($recipient->id, $recipient->name, $invitation->email));
+    expect($recipient->hasVerifiedEmail())->toBeTrue();
+    expect($recipient->fresh()->hasVerifiedEmail())->toBeFalse();
+    $method = $action === 'accept' ? 'post' : 'delete';
+    $response = $this->{$method.($json ? 'Json' : '')}(route('invitations.'.$action, $invitation->code));
+    $message = 'Verify your current email address before responding to an invitation.';
+
+    if ($json) {
+        $response->assertUnprocessable()->assertJsonValidationErrors(['invitation' => $message]);
+    } else {
+        $response->assertRedirect(route('teams.index'))->assertSessionHasErrors(['invitation' => $message]);
+    }
+
+    $this->assertModelExists($invitation);
+    expect($invitation->fresh()->accepted_at)->toBeNull();
+    expect($recipient->fresh()->current_team_id)->toBe($selectedTeamId);
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse();
+})->with(['accept', 'decline'])->with([false, true]);
 
 test('team invitations can be created', function () {
     Notification::fake();
