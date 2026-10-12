@@ -69,6 +69,8 @@ file_put_contents('/tmp/smoke-request-started', 'started');
 usleep(2000000);
 echo 'graceful-request-complete';
 PHP
+chmod 0755 "$temporary_directory"
+chmod 0644 "$temporary_directory/slow.php"
 
 application_key="base64:$(openssl rand -base64 32)"
 docker run --detach --name "$container" \
