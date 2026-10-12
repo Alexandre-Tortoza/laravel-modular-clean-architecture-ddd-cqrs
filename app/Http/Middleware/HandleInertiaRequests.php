@@ -48,7 +48,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'currentTeam' => fn () => $user ? $this->userTeam($this->teams->currentForUser($user->id)) : null,
+            'currentTeam' => fn () => $user ? $this->userTeam($this->currentTeam($request, $user->id)) : null,
             'teams' => fn () => $user ? collect($this->teams->forUser($user->id, includeCurrent: true))->map($this->userTeam(...)) : [],
         ];
     }
@@ -57,5 +57,17 @@ class HandleInertiaRequests extends Middleware
     private function userTeam(?TeamData $team): ?array
     {
         return $team ? ['id' => $team->id, 'name' => $team->name, 'slug' => $team->slug, 'isPersonal' => $team->isPersonal, 'role' => $team->role?->value, 'roleLabel' => $team->role?->label(), 'isCurrent' => $team->isCurrent] : null;
+    }
+
+    private function currentTeam(Request $request, int $userId): ?TeamData
+    {
+        $contextTeamId = $request->attributes->get('team_context_id');
+
+        if (is_int($contextTeamId)) {
+            return collect($this->teams->forUser($userId, includeCurrent: true))
+                ->first(fn (TeamData $team): bool => $team->id === $contextTeamId);
+        }
+
+        return $this->teams->currentForUser($userId);
     }
 }

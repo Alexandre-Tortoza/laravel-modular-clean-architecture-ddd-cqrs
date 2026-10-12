@@ -7,12 +7,14 @@ use App\Modules\Profile\Application\Commands\DeleteProfile;
 use App\Modules\Profile\Application\Commands\DeleteProfileHandler;
 use App\Modules\Profile\Application\Commands\UpdateProfile;
 use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
+use App\Modules\Profile\Domain\Exceptions\ProfileDeletionRejected;
 use App\Modules\Profile\Presentation\Http\Requests\ProfileDeleteRequest;
 use App\Modules\Profile\Presentation\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,9 +50,13 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        Auth::logout();
+        try {
+            $deleteProfile->handle(new DeleteProfile($user->id, $user->email));
+        } catch (ProfileDeletionRejected $exception) {
+            throw ValidationException::withMessages(['account' => $exception->getMessage()]);
+        }
 
-        $deleteProfile->handle(new DeleteProfile($user->id));
+        Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

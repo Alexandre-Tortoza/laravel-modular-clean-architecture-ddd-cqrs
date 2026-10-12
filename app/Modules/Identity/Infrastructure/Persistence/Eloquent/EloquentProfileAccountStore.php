@@ -31,6 +31,7 @@ class EloquentProfileAccountStore implements StoresProfileAccounts
 
     public function delete(int $actorId): void
     {
+        $this->requireTransaction();
         User::query()->findOrFail($actorId)->delete();
     }
 

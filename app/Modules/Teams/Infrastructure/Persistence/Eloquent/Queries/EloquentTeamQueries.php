@@ -60,6 +60,7 @@ class EloquentTeamQueries implements TeamQueries
 
         $personal = Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
             ->where('team_members.user_id', $userId)->where('teams.is_personal', true)
+            ->where('team_members.role', TeamRole::Owner->value)
             ->select('teams.*')->first();
 
         return $personal === null ? null : $this->teamData($personal, $userId, null);

@@ -3,13 +3,16 @@
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\CancelTeamInvitationHandler;
+use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use App\Modules\Teams\Application\Commands\CreateTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\DeclineTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\DeleteTeamHandler;
 use App\Modules\Teams\Application\Commands\LeaveTeamHandler;
 use App\Modules\Teams\Application\Commands\SwitchCurrentTeamHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeamHandler;
+use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\InvalidTeamName;
 use App\Modules\Teams\Domain\Exceptions\TeamInvitationCreationRejected;
 use App\Modules\Teams\Domain\Exceptions\TeamInvitationResponseRejected;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
@@ -42,6 +45,42 @@ test('team update returns forbidden when application rejects a stale operation',
         ->assertJsonPath('message', 'Team state changed.');
 
     expect($team->fresh()->name)->toBe($team->name);
+});
+
+test('team update returns name validation when the application rejects a direct invariant violation', function () {
+    $user = UserWithPersonalTeam::create();
+    $team = failureTranslationTeam($user);
+    $handler = Mockery::mock(UpdateTeamHandler::class);
+    $handler->shouldReceive('handle')->once()->andThrow(new InvalidTeamName('The team name is required.'));
+    app()->instance(UpdateTeamHandler::class, $handler);
+
+    $this->actingAs($user)->patchJson(route('teams.update', $team), ['name' => 'Valid request name'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['name' => 'The team name is required.']);
+});
+
+test('team creation returns name validation when the application rejects a direct invariant violation', function () {
+    $user = UserWithPersonalTeam::create();
+    $handler = Mockery::mock(CreateTeamHandler::class);
+    $handler->shouldReceive('handle')->once()->andThrow(new InvalidTeamName('The team name is required.'));
+    app()->instance(CreateTeamHandler::class, $handler);
+
+    $this->actingAs($user)->postJson(route('teams.store'), ['name' => 'Valid request name'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['name' => 'The team name is required.']);
+});
+
+test('team edit returns forbidden when the query rejects a membership changed after middleware', function () {
+    $user = UserWithPersonalTeam::create();
+    $team = failureTranslationTeam($user, TeamRole::Member);
+    $queries = Mockery::mock(TeamQueries::class);
+    $queries->shouldReceive('editFor')->once()->with($user->id, $team->id)
+        ->andThrow(new TeamOperationRejected('Team membership changed.'));
+    app()->instance(TeamQueries::class, $queries);
+
+    $this->actingAs($user)->getJson(route('teams.edit', $team))
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Team membership changed.');
 });
 
 test('team switch returns forbidden when application rejects a stale membership', function () {

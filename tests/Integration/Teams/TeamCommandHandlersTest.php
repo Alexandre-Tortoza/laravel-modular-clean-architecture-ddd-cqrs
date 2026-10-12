@@ -19,6 +19,7 @@ use App\Modules\Teams\Application\Commands\UpdateTeamMemberRole;
 use App\Modules\Teams\Application\Commands\UpdateTeamMemberRoleHandler;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\InvalidTeamName;
 use App\Modules\Teams\Domain\Exceptions\TeamInvitationResponseRejected;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
@@ -36,6 +37,27 @@ test('creating a team selects it without changing URL defaults in the write laye
 
     expect($user->fresh()->current_team_id)->toBe($createdTeam->id)
         ->and(URL::getDefaultParameters()['current_team'])->toBe($previousTeamSlug);
+});
+
+test('direct team creation rejects an invalid name before persisting a team or selection', function () {
+    $user = User::factory()->create();
+
+    expect(fn () => app(CreateTeamHandler::class)->handle(new CreateTeam($user->id, '   ')))
+        ->toThrow(InvalidTeamName::class);
+
+    expect($user->fresh()->current_team_id)->toBeNull()
+        ->and(Team::query()->where('name', '   ')->exists())->toBeFalse();
+});
+
+test('direct team update rejects an invalid name without changing the team or selection', function () {
+    $user = UserWithPersonalTeam::create();
+    $team = app(TeamContext::class)->currentForUser($user->id);
+
+    expect(fn () => app(UpdateTeamHandler::class)->handle(new UpdateTeam($user->id, $team->id, str_repeat('a', 256))))
+        ->toThrow(InvalidTeamName::class);
+
+    expect(Team::query()->findOrFail($team->id)->name)->toBe($team->name)
+        ->and($user->fresh()->current_team_id)->toBe($team->id);
 });
 
 test('leaving the only selected shared team clears the selection without a personal team', function () {
@@ -223,10 +245,12 @@ test('team and several user locks follow ascending ids with an intermediate acto
 
     $locks = collect(DB::getQueryLog())
         ->filter(fn (array $query): bool => str_contains(strtolower($query['query']), ' from "teams" ') || str_contains(strtolower($query['query']), ' from "users" '))
-        ->filter(fn (array $query): bool => str_contains(strtolower($query['query']), ' limit 1'))
         ->values();
 
     expect($locks->pluck('query')->first())->toContain('teams')
-        ->and($locks->slice(1, 3)->pluck('bindings')->map(fn (array $bindings): int => (int) $bindings[0])->all())
+        ->and($locks->filter(fn (array $query): bool => str_contains(strtolower($query['query']), ' from "users" ')
+                && str_contains(strtolower($query['query']), 'where "users"."id"')
+                && str_contains(strtolower($query['query']), ' limit 1'))
+            ->take(3)->pluck('bindings')->map(fn (array $bindings): int => (int) $bindings[0])->all())
         ->toBe([$lowerIdMember->id, $actor->id, $higherIdMember->id]);
 });

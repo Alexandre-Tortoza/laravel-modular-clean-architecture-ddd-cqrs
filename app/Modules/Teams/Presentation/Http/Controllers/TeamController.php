@@ -16,6 +16,7 @@ use App\Modules\Teams\Application\Commands\UpdateTeam;
 use App\Modules\Teams\Application\Commands\UpdateTeamHandler;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\InvalidTeamName;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Requests\DeleteTeamRequest;
@@ -23,6 +24,7 @@ use App\Modules\Teams\Presentation\Http\Requests\SaveTeamRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,10 +50,14 @@ class TeamController extends Controller
      */
     public function store(SaveTeamRequest $request, CreateTeamHandler $createTeam): RedirectResponse
     {
-        $team = $createTeam->handle(new CreateTeam(
-            userId: $request->user()->id,
-            name: $request->validated('name'),
-        ));
+        try {
+            $team = $createTeam->handle(new CreateTeam(
+                userId: $request->user()->id,
+                name: $request->validated('name'),
+            ));
+        } catch (InvalidTeamName $exception) {
+            throw ValidationException::withMessages(['name' => $exception->getMessage()]);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 
@@ -63,7 +69,11 @@ class TeamController extends Controller
      */
     public function edit(Request $request, Team $team, TeamQueries $queries): Response
     {
-        $edit = $queries->editFor($request->user()->id, $team->id);
+        try {
+            $edit = $queries->editFor($request->user()->id, $team->id);
+        } catch (TeamOperationRejected $exception) {
+            abort(403, $exception->getMessage());
+        }
 
         return Inertia::render('teams/Edit', [
             'team' => [
@@ -85,6 +95,8 @@ class TeamController extends Controller
 
         try {
             $team = $handler->handle(new UpdateTeam($request->user()->id, $team->id, $request->validated('name')));
+        } catch (InvalidTeamName $exception) {
+            throw ValidationException::withMessages(['name' => $exception->getMessage()]);
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }

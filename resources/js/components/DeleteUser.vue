@@ -66,6 +66,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                 you would like to permanently delete your
                                 account.
                             </DialogDescription>
+                            <InputError :message="errors.account" />
                         </DialogHeader>
 
                         <div class="grid gap-2">

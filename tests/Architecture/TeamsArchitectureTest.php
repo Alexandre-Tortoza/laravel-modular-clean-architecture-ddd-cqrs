@@ -59,7 +59,7 @@ test('a new module with a forbidden dependency is discovered', function () {
     mkdir($otherModule, 0777, true);
     $file = $module.'/Forbidden.php';
     $otherFile = $otherModule.'/PrivateStore.php';
-    file_put_contents($file, '<?php namespace App\\Modules\\NewModule\\Domain; use Illuminate\\Support\\Collection; use App\\Modules\\OtherModule\\Infrastructure\\PrivateStore; use App\\Modules\\Identity\\Application\\Api\\TeamSelectionAccounts; final class Forbidden { public function value(): Collection { app(); return new Collection; } }');
+    file_put_contents($file, '<?php namespace App\\Modules\\NewModule\\Domain; use Illuminate\\Support\\Collection; use App\\Modules\\OtherModule\\Infrastructure\\PrivateStore; use App\\Modules\\Identity\\Application\\Api\\TeamSelectionAccounts; use App\\Modules\\Teams\\Application\\Api\\AccountTeamLifecycle; final class Forbidden { public function value(): Collection { app(); return new Collection; } }');
     file_put_contents($otherFile, '<?php namespace App\\Modules\\OtherModule\\Infrastructure; final class PrivateStore {}');
 
     try {
@@ -69,6 +69,7 @@ test('a new module with a forbidden dependency is discovered', function () {
         expect($inspector->layerViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses Illuminate\\Support\\Collection');
         expect($inspector->publicBoundaryViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses private App\\Modules\\OtherModule\\Infrastructure\\PrivateStore');
         expect($inspector->restrictedApiViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses Identity TeamSelectionAccounts outside its allowed modules');
+        expect($inspector->restrictedApiViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php uses Teams AccountTeamLifecycle outside its allowed modules');
         expect($inspector->globalHelperViolations())->toContain('app/Modules/NewModule/Domain/Forbidden.php calls framework helper app');
     } finally {
         unlink($file);

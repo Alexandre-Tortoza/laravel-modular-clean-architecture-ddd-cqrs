@@ -5,15 +5,19 @@ namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Repositories;
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
 use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Identity\Application\Api\UserRecord;
+use App\Modules\Teams\Application\Contracts\ManagesAccountTeams;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
+use App\Modules\Teams\Application\Data\AccountTeamDeletionData;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Application\Data\TeamDeletionData;
 use App\Modules\Teams\Application\Data\TeamMembershipData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-class EloquentTeamManager implements ManagesTeams
+class EloquentTeamManager implements ManagesAccountTeams, ManagesTeams
 {
     public function __construct(private UserDirectory $users, private TeamSelectionAccounts $selection) {}
 
@@ -46,7 +50,18 @@ class EloquentTeamManager implements ManagesTeams
 
     public function deletionForUpdate(int $teamId, int $userId): TeamDeletionData
     {
-        $team = Team::query()->lockForUpdate()->findOrFail($teamId);
+        $candidateTeams = function ($query) use ($teamId, $userId): void {
+            $query->whereKey($teamId)->orWhereIn('id', Membership::query()
+                ->select('team_id')->where('user_id', $userId));
+        };
+        $teams = Team::query()->where($candidateTeams)
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $team = $teams->get($teamId);
+
+        if ($team === null) {
+            throw new ModelNotFoundException;
+        }
+
         $users = $this->selection->lockMany(array_merge([$userId], $this->selection->userIdsSelectingTeam($teamId)));
         $affectedUsers = [];
 
@@ -86,6 +101,47 @@ class EloquentTeamManager implements ManagesTeams
         Membership::query()->where('team_id', $teamId)->where('user_id', $userId)->firstOrFail()->update(['role' => $role]);
     }
 
+    public function deletionDataForAccount(int $accountId): AccountTeamDeletionData
+    {
+        $teams = Team::query()->whereIn('id', Membership::query()
+            ->select('team_id')->where('user_id', $accountId))
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $this->selection->lockMany([$accountId]);
+        $memberships = Membership::query()->where('user_id', $accountId)
+            ->orderBy('team_id')->lockForUpdate()->get();
+        $ownedTeams = [];
+
+        foreach ($memberships as $membership) {
+            $team = $teams->get($membership->team_id);
+
+            if ($team === null || $membership->role !== TeamRole::Owner) {
+                continue;
+            }
+
+            $ownedTeams[] = [
+                'id' => $team->id,
+                'isPersonal' => $team->is_personal,
+                'memberCount' => $team->memberships()->count(),
+            ];
+        }
+
+        return new AccountTeamDeletionData($ownedTeams);
+    }
+
+    public function deleteResourcesForAccount(int $accountId, string $email, array $personalTeamIds): void
+    {
+        TeamInvitation::query()->where('invited_by', $accountId)
+            ->orWhereRaw('LOWER(email) = ?', [mb_strtolower($email)])->delete();
+        Membership::query()->where('user_id', $accountId)->delete();
+
+        foreach ($personalTeamIds as $teamId) {
+            $team = Team::query()->findOrFail($teamId);
+            $team->invitations()->delete();
+            $team->memberships()->delete();
+            $team->delete();
+        }
+    }
+
     private function membershipData(Team $team, UserRecord $user): TeamMembershipData
     {
         $currentTeamId = $this->users->currentTeamIdFor($user->id);
@@ -105,7 +161,8 @@ class EloquentTeamManager implements ManagesTeams
     private function personalTeamId(int $userId): ?int
     {
         $id = Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
-            ->where('team_members.user_id', $userId)->where('teams.is_personal', true)->value('teams.id');
+            ->where('team_members.user_id', $userId)->where('teams.is_personal', true)
+            ->where('team_members.role', TeamRole::Owner->value)->value('teams.id');
 
         return $id === null ? null : (int) $id;
     }

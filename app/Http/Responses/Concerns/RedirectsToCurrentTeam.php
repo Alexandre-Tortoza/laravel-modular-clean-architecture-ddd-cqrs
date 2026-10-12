@@ -13,20 +13,22 @@ trait RedirectsToCurrentTeam
     {
         $team = $this->currentTeam($request);
 
+        if ($team === null) {
+            return route('teams.index', absolute: false);
+        }
+
         URL::defaults(['current_team' => $team->slug]);
 
         return "/{$team->slug}{$redirect}";
     }
 
-    protected function currentTeam(Request $request): TeamData
+    protected function currentTeam(Request $request): ?TeamData
     {
         $user = $request->user();
 
         abort_if(! $user, 403);
 
         $team = app(TeamContext::class)->currentOrPersonalForUser($user->id);
-
-        abort_if(! $team, 403);
 
         return $team;
     }

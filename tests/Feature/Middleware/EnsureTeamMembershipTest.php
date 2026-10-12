@@ -2,9 +2,7 @@
 
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Teams\Application\Api\TeamContext;
-use App\Modules\Teams\Application\Commands\SwitchCurrentTeamHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
-use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Http\Request;
@@ -32,7 +30,7 @@ function membershipRequest(?User $user, string $parameter, Team|string|null $tea
     return $request;
 }
 
-test('allows a member and switches to a team resolved from its slug', function () {
+test('allows a member to use a team resolved from its slug without persisting selection', function () {
     $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
     $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
@@ -43,10 +41,12 @@ test('allows a member and switches to a team resolved from its slug', function (
     );
 
     expect($response->getContent())->toBe('next')
-        ->and($user->fresh()->current_team_id)->toBe($team->id)
-        ->and($user->current_team_id)->toBe($team->id)
-        ->and(app(TeamContext::class)->currentForUser($user->id)->id)->toBe($team->id)
-        ->and(URL::getDefaultParameters()['current_team'])->toBe($team->slug);
+        ->and($user->fresh()->current_team_id)->not->toBe($team->id)
+        ->and(app(TeamContext::class)->currentForUser($user->id)->id)->toBe($user->current_team_id)
+        ->and(URL::getDefaultParameters())->toMatchArray([
+            'current_team' => $team->slug,
+            'team' => $team->slug,
+        ]);
 });
 
 test('allows a sufficient role without changing the current team for a team route parameter', function () {
@@ -64,18 +64,18 @@ test('allows a sufficient role without changing the current team for a team rout
         ->and($user->fresh()->current_team_id)->not->toBe($team->id);
 });
 
-test('forbids a current team route when a membership changes during switching', function () {
+test('does not invoke the persistent switch command for a current team route', function () {
     $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
     $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
-    $switch = Mockery::mock(SwitchCurrentTeamHandler::class);
-    $switch->shouldReceive('handle')->once()->andThrow(new TeamOperationRejected('Membership changed.'));
     $request = membershipRequest($user, 'current_team', $team);
 
-    expect(fn () => (new EnsureTeamMembership($switch, app(TeamContext::class)))->handle(
+    $response = app(EnsureTeamMembership::class)->handle(
         $request,
         fn (): Response => new Response('next'),
-    ))->toThrow(HttpException::class, 'Membership changed.')
+    );
+
+    expect($response->getContent())->toBe('next')
         ->and($user->fresh()->current_team_id)->not->toBe($team->id);
 });
 

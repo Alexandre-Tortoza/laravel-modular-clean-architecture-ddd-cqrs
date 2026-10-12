@@ -2,16 +2,19 @@
 
 namespace App\Modules\Teams\Infrastructure\Providers;
 
+use App\Modules\Teams\Application\Api\AccountTeamLifecycle;
 use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\PruneExpiredTeamInvitations;
 use App\Modules\Teams\Application\Commands\PruneExpiredTeamInvitationsHandler;
 use App\Modules\Teams\Application\Contracts\CreatesTeams;
+use App\Modules\Teams\Application\Contracts\ManagesAccountTeams;
 use App\Modules\Teams\Application\Contracts\ManagesTeamInvitations;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
 use App\Modules\Teams\Application\Contracts\RunsTeamTransactions;
 use App\Modules\Teams\Application\Contracts\SendsTeamInvitations;
 use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Services\AccountTeamLifecycleService;
 use App\Modules\Teams\Infrastructure\Clock\SystemTeamClock;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitationSender;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\EloquentTeamTransaction;
@@ -31,6 +34,8 @@ class TeamsServiceProvider extends ServiceProvider
     {
         $this->app->bind(CreatesTeams::class, EloquentTeamCreator::class);
         $this->app->bind(ManagesTeams::class, EloquentTeamManager::class);
+        $this->app->bind(ManagesAccountTeams::class, EloquentTeamManager::class);
+        $this->app->bind(AccountTeamLifecycle::class, AccountTeamLifecycleService::class);
         $this->app->bind(ManagesTeamInvitations::class, EloquentTeamInvitationManager::class);
         $this->app->bind(RunsTeamTransactions::class, EloquentTeamTransaction::class);
         $this->app->bind(TeamQueries::class, EloquentTeamQueries::class);

@@ -64,6 +64,18 @@ test('users without a selected current team are redirected to their personal tea
     $response->assertRedirect(route('dashboard', ['current_team' => $personalTeam?->slug]));
 });
 
+test('users without teams are redirected to team management after login', function () {
+    $user = User::factory()->create();
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertAuthenticated();
+    $response->assertRedirect(route('teams.index'));
+});
+
 test('passkey login response redirects to the current team dashboard', function () {
     $user = UserWithPersonalTeam::create();
 

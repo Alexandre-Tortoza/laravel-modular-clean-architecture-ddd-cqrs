@@ -131,6 +131,21 @@ test('resolves the personal team when a user has not selected a current team', f
         ->and($team?->isCurrent)->toBeFalse();
 });
 
+test('resolves only an owned personal team when the user also belongs to another personal team', function (): void {
+    $otherOwner = User::factory()->create();
+    $otherPersonalTeam = Team::factory()->create(['is_personal' => true]);
+    $otherPersonalTeam->memberships()->create(['user_id' => $otherOwner->id, 'role' => TeamRole::Owner]);
+    $user = UserWithPersonalTeam::create();
+    $ownedPersonalTeam = UserWithPersonalTeam::personalTeam($user);
+    $otherPersonalTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+    app(TeamSelectionAccounts::class)->select($user->id, null);
+
+    $team = app(TeamQueries::class)->currentOrPersonalForUser($user->id);
+
+    expect($team?->id)->toBe($ownedPersonalTeam?->id)
+        ->and($team?->id)->not->toBe($otherPersonalTeam->id);
+});
+
 test('excludes the current team without changing its projection flag', function () {
     $user = UserWithPersonalTeam::create();
     $currentTeam = UserWithPersonalTeam::personalTeam($user);

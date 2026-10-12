@@ -9,6 +9,7 @@ use App\Modules\Teams\Application\Data\TeamMembershipData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Policies\TeamLifecyclePolicy;
+use App\Modules\Teams\Domain\Policies\TeamNamePolicy;
 
 it('rejects a role read inside the transaction without writing through the port', function (): void {
     $transactions = new class implements RunsTeamTransactions
@@ -36,7 +37,7 @@ it('rejects a role read inside the transaction without writing through the port'
     $teams->shouldNotReceive('update');
 
     try {
-        expect(fn () => (new UpdateTeamHandler($teams, $transactions, new TeamLifecyclePolicy))
+        expect(fn () => (new UpdateTeamHandler($teams, $transactions, new TeamLifecyclePolicy, new TeamNamePolicy))
             ->handle(new UpdateTeam(3, 7, 'Changed')))->toThrow(TeamOperationRejected::class);
     } finally {
         Mockery::close();
@@ -57,7 +58,7 @@ it('persists a permitted update inside the transaction', function (): void {
     $teams->shouldReceive('update')->once()->with(7, 'Changed')->andReturn(new TeamData(7, 'Changed', 'changed', false));
 
     try {
-        $updated = (new UpdateTeamHandler($teams, $transactions, new TeamLifecyclePolicy))
+        $updated = (new UpdateTeamHandler($teams, $transactions, new TeamLifecyclePolicy, new TeamNamePolicy))
             ->handle(new UpdateTeam(3, 7, 'Changed'));
         expect($updated->name)->toBe('Changed');
     } finally {

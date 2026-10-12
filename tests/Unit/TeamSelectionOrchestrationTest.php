@@ -14,6 +14,7 @@ use App\Modules\Teams\Application\Data\InvitationResponseData;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Domain\Policies\InvitationPolicy;
+use App\Modules\Teams\Domain\Policies\TeamNamePolicy;
 
 test('create handler selects the new team after persisting it inside the transaction', function (): void {
     $steps = [];
@@ -42,7 +43,7 @@ test('create handler selects the new team after persisting it inside the transac
         $steps[] = 'select';
     });
 
-    $created = (new CreateTeamHandler($teams, $transactions, $selection))->handle(new CreateTeam(3, 'New Team'));
+    $created = (new CreateTeamHandler($teams, $transactions, $selection, new TeamNamePolicy))->handle(new CreateTeam(3, 'New Team'));
 
     expect($steps)->toBe(['begin', 'lock', 'create', 'select', 'end'])
         ->and($created->isCurrent)->toBeTrue();

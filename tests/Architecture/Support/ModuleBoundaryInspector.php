@@ -165,6 +165,9 @@ final class ModuleBoundaryInspector
             'AccountCredentials' => ['Security'],
             'SecurityAccounts' => ['Security'],
         ];
+        $teamsAllowedConsumers = [
+            'AccountTeamLifecycle' => ['Profile'],
+        ];
 
         foreach ($this->phpFiles($this->root.'/app') as $file) {
             $relative = $this->relative($file);
@@ -178,6 +181,14 @@ final class ModuleBoundaryInspector
                 if (in_array('App\\Modules\\Identity\\Application\\Api\\'.$api, $this->dependencies($file), true)
                     && ! in_array($sourceModule, $consumers, true)) {
                     $violations[] = "$relative uses Identity $api outside its allowed modules";
+                }
+            }
+
+            foreach ($teamsAllowedConsumers as $api => $consumers) {
+                if (in_array('App\\Modules\\Teams\\Application\\Api\\'.$api, $this->dependencies($file), true)
+                    && $sourceModule !== 'Teams'
+                    && ! in_array($sourceModule, $consumers, true)) {
+                    $violations[] = "$relative uses Teams $api outside its allowed modules";
                 }
             }
         }

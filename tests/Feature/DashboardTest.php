@@ -22,6 +22,36 @@ test('authenticated users can visit the dashboard', function () {
     $response->assertOk();
 });
 
+test('a dashboard route uses its team as request context without changing the saved selection', function () {
+    $user = UserWithPersonalTeam::create();
+    $savedTeam = Team::query()->findOrFail($user->current_team_id);
+    $routeTeam = Team::factory()->create(['name' => 'Route Team']);
+    $routeTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard', ['current_team' => $routeTeam->slug]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('currentTeam.id', $routeTeam->id)
+            ->where('currentTeam.slug', $routeTeam->slug),
+        );
+
+    expect($user->fresh()->current_team_id)->toBe($savedTeam->id);
+});
+
+test('a dashboard HEAD request does not change the saved team selection', function () {
+    $user = UserWithPersonalTeam::create();
+    $savedTeamId = $user->current_team_id;
+    $routeTeam = Team::factory()->create(['name' => 'Head Route Team']);
+    $routeTeam->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
+
+    $this->actingAs($user)
+        ->head(route('dashboard', ['current_team' => $routeTeam->slug]))
+        ->assertOk();
+
+    expect($user->fresh()->current_team_id)->toBe($savedTeamId);
+});
+
 test('authenticated users without a current team receive no current team prop', function () {
     $user = UserWithPersonalTeam::create();
     $queries = Mockery::mock(TeamContext::class);
