@@ -4,8 +4,16 @@ set -euo pipefail
 image="${1:-laravel-php:smoke}"
 container="laravel-php-smoke-${RANDOM}"
 temporary_directory="$(mktemp -d)"
+stage=environment
 
 cleanup() {
+    status=$?
+    if [ "$status" -ne 0 ]; then
+        printf 'PHP image smoke failed during %s.\n' "$stage" >&2
+        if [ -f "$temporary_directory/cli-output" ]; then
+            cat "$temporary_directory/cli-output" >&2
+        fi
+    fi
     docker rm --force "$container" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
 }
@@ -15,6 +23,7 @@ command -v cgi-fcgi >/dev/null
 test "$(docker image inspect --format '{{.Config.User}}' "$image")" != root
 test "$(docker image inspect --format '{{.Config.StopSignal}}' "$image")" = SIGQUIT
 
+stage=cli-runtime
 docker run --rm --network none "$image" sh -ec '
     test "$(id -u)" -ne 0
     test ! -w artisan
@@ -73,6 +82,7 @@ chmod 0755 "$temporary_directory"
 chmod 0644 "$temporary_directory/slow.php"
 
 application_key="base64:$(openssl rand -base64 32)"
+stage=fpm-start
 docker run --detach --name "$container" \
     --cap-drop ALL --security-opt no-new-privileges \
     --publish 127.0.0.1::9000 \
@@ -89,6 +99,7 @@ request() {
         cgi-fcgi -bind -connect "127.0.0.1:$port"
 }
 
+stage=health-request
 for attempt in $(seq 1 40); do
     if request /up >"$temporary_directory/health" 2>/dev/null; then
         break
@@ -97,12 +108,15 @@ for attempt in $(seq 1 40); do
 done
 grep -q 'Application up' "$temporary_directory/health"
 ! grep -Eq '^Status: [45]' "$temporary_directory/health"
+stage=login-assets
 request /login >"$temporary_directory/login"
 ! grep -Eq '^Status: [45]' "$temporary_directory/login"
 grep -q '/build/assets/' "$temporary_directory/login"
+stage=fpm-access-logs
 docker logs "$container" >"$temporary_directory/fpm-logs" 2>&1
 grep -q 'GET /up' "$temporary_directory/fpm-logs"
 
+stage=graceful-shutdown
 request /slow /tmp/image-smoke/slow.php >"$temporary_directory/slow-response" &
 request_pid=$!
 for attempt in $(seq 1 40); do
