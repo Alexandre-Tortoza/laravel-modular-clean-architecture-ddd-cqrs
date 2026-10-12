@@ -3,7 +3,7 @@
     "name": "laravel/vue-starter-kit",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "license": "proprietary",
+    "license": "MIT",
     "keywords": [
         "laravel",
         "framework"

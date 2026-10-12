@@ -1,8 +1,10 @@
-# Laravel Vue Modular Architecture Example
+# Laravel Vue Modular Architecture Template
 
-Public reference implementation of a Laravel 13 + Vue 3/Inertia 3 modular monolith using Fortify, Wayfinder, pragmatic Clean Architecture, DDD, and lightweight CQRS. The example is a working Teams flow; there is no command bus, event store, separate database, or sample CRUD added solely for the architecture.
+Free, open-source, reusable Laravel 13 + Vue 3/Inertia 3 template for a modular monolith using Fortify, Wayfinder, pragmatic Clean Architecture, DDD, and lightweight CQRS. The example is a working Teams flow; there is no command bus, event store, separate database, or sample CRUD added solely for the architecture.
 
-This project is a reference for study, not a reusable template. The source is available to study; this repository does not grant a license to reuse or redistribute it. Its dependencies retain their own licenses.
+Licensed under the [MIT license](LICENSE), this template can be used, modified, and redistributed, including in commercial projects, subject to the license terms.
+
+Based on the [Laravel + Vue starter kit](https://github.com/laravel/vue-starter-kit). The Laravel copyright notice is retained in `LICENSE`. Third-party dependencies retain their own licenses and copyright notices in their distributed files, including those installed in `vendor/` and `node_modules/`; preserve applicable notices when redistributing them. The project's MIT license does not replace dependency licenses.
 
 ## Requirements and first install
 
