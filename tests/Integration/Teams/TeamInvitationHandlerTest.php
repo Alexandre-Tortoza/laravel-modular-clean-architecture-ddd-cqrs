@@ -1,31 +1,35 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitation;
+use App\Modules\Teams\Application\Commands\AcceptTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\CancelTeamInvitation;
+use App\Modules\Teams\Application\Commands\CancelTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\CreateTeamInvitation;
+use App\Modules\Teams\Application\Commands\CreateTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\DeclineTeamInvitation;
-use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
+use App\Modules\Teams\Application\Commands\DeclineTeamInvitationHandler;
 use App\Modules\Teams\Application\Contracts\SendsTeamInvitations;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
-use App\Modules\Teams\Application\Exceptions\TeamInvitationCreationRejected;
-use App\Modules\Teams\Application\Exceptions\TeamInvitationResponseRejected;
-use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamInvitationCreationRejected;
+use App\Modules\Teams\Domain\Exceptions\TeamInvitationResponseRejected;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Notifications\TeamInvitation as TeamInvitationNotification;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Tests\Support\UserWithPersonalTeam;
 
 test('handler rejects owner invitations', function () {
     Notification::fake();
 
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Owner)))
+    expect(fn () => app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Owner)))
         ->toThrow(TeamOperationRejected::class);
 
     $this->assertDatabaseMissing('team_invitations', ['team_id' => $team->id, 'email' => 'invited@example.com']);
@@ -35,13 +39,13 @@ test('handler rejects owner invitations', function () {
 test('handler rejects an invitation when the recipient is already a member', function () {
     Notification::fake();
 
-    $owner = User::factory()->create();
-    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'invited@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
-    $team->members()->attach($recipient, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $recipient->id, 'role' => TeamRole::Member]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $owner->id, $recipient->email, TeamRole::Member)))
+    expect(fn () => app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $owner->id, $recipient->email, TeamRole::Member)))
         ->toThrow(TeamInvitationCreationRejected::class);
 
     $this->assertDatabaseMissing('team_invitations', ['team_id' => $team->id, 'email' => $recipient->email]);
@@ -51,16 +55,16 @@ test('handler rejects an invitation when the recipient is already a member', fun
 test('handler rejects duplicate pending invitations without sending another notification', function () {
     Notification::fake();
 
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
         'email' => 'invited@example.com',
         'invited_by' => $owner->id,
     ]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $owner->id, $invitation->email, TeamRole::Member)))
+    expect(fn () => app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $owner->id, $invitation->email, TeamRole::Member)))
         ->toThrow(TeamInvitationCreationRejected::class);
 
     expect(TeamInvitation::query()->where('team_id', $team->id)->count())->toBe(1);
@@ -70,11 +74,11 @@ test('handler rejects duplicate pending invitations without sending another noti
 test('handler checks the inviter role read under lock', function () {
     Notification::fake();
 
-    $member = User::factory()->create();
+    $member = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $member->id, 'invited@example.com', TeamRole::Member)))
+    expect(fn () => app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $member->id, 'invited@example.com', TeamRole::Member)))
         ->toThrow(TeamOperationRejected::class);
 
     $this->assertDatabaseMissing('team_invitations', ['team_id' => $team->id, 'email' => 'invited@example.com']);
@@ -82,14 +86,14 @@ test('handler checks the inviter role read under lock', function () {
 });
 
 test('handler checks the cancelling actor role read under lock', function () {
-    $owner = User::factory()->create();
-    $member = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
+    $member = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
     $invitation = TeamInvitation::factory()->create(['team_id' => $team->id, 'invited_by' => $owner->id]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->cancel(new CancelTeamInvitation($team->id, $member->id, $invitation->id)))
+    expect(fn () => app(CancelTeamInvitationHandler::class)->handle(new CancelTeamInvitation($team->id, $member->id, $invitation->id)))
         ->toThrow(TeamOperationRejected::class);
 
     $this->assertModelExists($invitation);
@@ -99,11 +103,11 @@ test('creation expires after three days and queues one notification', function (
     $this->travelTo('2026-01-01 12:00:00');
     Notification::fake();
 
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
-    $created = app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Member));
+    $created = app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Member));
 
     expect(TeamInvitation::query()->findOrFail($created->id)->expires_at->format('Y-m-d H:i:s'))->toBe('2026-01-04 12:00:00');
     Notification::assertSentOnDemandOnce(TeamInvitationNotification::class);
@@ -125,11 +129,11 @@ test('handler sends once after its transaction completes', function () {
     app()->instance(SendsTeamInvitations::class, $sender);
     $transactionLevel = DB::transactionLevel();
 
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
-    app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Member));
+    app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $owner->id, 'invited@example.com', TeamRole::Member));
 
     expect($sender->transactionLevels)->toBe([$transactionLevel]);
 });
@@ -137,10 +141,10 @@ test('handler sends once after its transaction completes', function () {
 test('accept and decline reject an invitation at its expiration time', function (string $response) {
     $this->travelTo('2026-01-01 12:00:00');
 
-    $owner = User::factory()->create();
-    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'invited@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
         'email' => $recipient->email,
@@ -153,25 +157,25 @@ test('accept and decline reject an invitation at its expiration time', function 
         ? new AcceptTeamInvitation($recipient->id, $invitation->id)
         : new DeclineTeamInvitation($recipient->id, $invitation->id);
 
-    expect(fn () => app(TeamInvitationHandler::class)->{$response}($command))
+    expect(fn () => app($response === 'accept' ? AcceptTeamInvitationHandler::class : DeclineTeamInvitationHandler::class)->handle($command))
         ->toThrow(TeamInvitationResponseRejected::class);
 
     $this->assertModelExists($invitation);
-    expect($recipient->fresh()->belongsToTeam($team))->toBeFalse();
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse();
 })->with(['accept', 'decline']);
 
 test('handler returns the selected team slug on acceptance', function () {
-    $owner = User::factory()->create();
-    $recipient = User::factory()->create(['email' => 'invited@example.com']);
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'invited@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
         'email' => $recipient->email,
         'invited_by' => $owner->id,
     ]);
 
-    $slug = app(TeamInvitationHandler::class)->accept(new AcceptTeamInvitation($recipient->id, $invitation->id));
+    $slug = app(AcceptTeamInvitationHandler::class)->handle(new AcceptTeamInvitation($recipient->id, $invitation->id));
 
     expect($slug)->toBe($team->slug)
         ->and($recipient->fresh()->current_team_id)->toBe($team->id);
@@ -180,16 +184,16 @@ test('handler returns the selected team slug on acceptance', function () {
 test('invitation locks recipient users and the inviter in ascending ID order', function () {
     Notification::fake();
 
-    $firstRecipient = User::factory()->create(['email' => 'Invited@example.com']);
-    $inviter = User::factory()->create();
-    $lastRecipient = User::factory()->create(['email' => 'invited@example.com']);
+    $firstRecipient = UserWithPersonalTeam::create(['email' => 'Invited@example.com']);
+    $inviter = UserWithPersonalTeam::create();
+    $lastRecipient = UserWithPersonalTeam::create(['email' => 'invited@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($inviter, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $inviter->id, 'role' => TeamRole::Owner]);
 
     DB::flushQueryLog();
     DB::enableQueryLog();
 
-    app(TeamInvitationHandler::class)->create(new CreateTeamInvitation($team->id, $inviter->id, 'INVITED@example.com', TeamRole::Member));
+    app(CreateTeamInvitationHandler::class)->handle(new CreateTeamInvitation($team->id, $inviter->id, 'INVITED@example.com', TeamRole::Member));
 
     $lockedUserIds = collect(DB::getQueryLog())
         ->filter(fn (array $query): bool => str_contains($query['query'], 'from "users"') && str_contains($query['query'], 'where "users"."id" = ?'))

@@ -3,14 +3,14 @@
 namespace App\Modules\Teams\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Api\TeamContext;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, TeamQueries $teams): Response
+    public function __invoke(Request $request, TeamContext $teams): Response
     {
         $pendingInvitations = collect($teams->pendingInvitationsForEmail($request->user()->email))
             ->map(fn ($invitation): array => [

@@ -2,16 +2,16 @@
 
 namespace App\Modules\Profile\Presentation\Http\Concerns;
 
-use App\Models\User;
+use App\Modules\Identity\Application\Api\UserDirectory;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Validation\Rule;
 
 trait ProfileValidationRules
 {
     /**
      * Get the validation rules used to validate user profiles.
      *
-     * @return array<string, array<int, ValidationRule|array<mixed>|string>>
+     * @return array<string, array<int, Closure|ValidationRule|array<mixed>|string>>
      */
     protected function profileRules(?int $userId = null): array
     {
@@ -24,7 +24,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate user names.
      *
-     * @return array<int, ValidationRule|array<mixed>|string>
+     * @return array<int, Closure|ValidationRule|array<mixed>|string>
      */
     protected function nameRules(): array
     {
@@ -34,7 +34,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate user emails.
      *
-     * @return array<int, ValidationRule|array<mixed>|string>
+     * @return array<int, Closure|ValidationRule|array<mixed>|string>
      */
     protected function emailRules(?int $userId = null): array
     {
@@ -43,9 +43,13 @@ trait ProfileValidationRules
             'string',
             'email',
             'max:255',
-            $userId === null
-                ? Rule::unique(User::class)
-                : Rule::unique(User::class)->ignore($userId),
+            function (string $attribute, mixed $value, Closure $fail) use ($userId): void {
+                $existing = app(UserDirectory::class)->findByEmail((string) $value);
+
+                if ($existing !== null && $existing->id !== $userId) {
+                    $fail(__('validation.unique', ['attribute' => $attribute]));
+                }
+            },
         ];
     }
 }

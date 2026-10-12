@@ -3,12 +3,13 @@
 namespace App\Modules\Teams\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Teams\Application\Commands\RemoveTeamMember;
-use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
+use App\Modules\Teams\Application\Commands\RemoveTeamMemberHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeamMemberRole;
-use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
+use App\Modules\Teams\Application\Commands\UpdateTeamMemberRoleHandler;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Http\Requests\UpdateTeamMemberRequest;
 use Illuminate\Http\RedirectResponse;
@@ -21,14 +22,16 @@ class TeamMemberController extends Controller
     /**
      * Update the specified team member's role.
      */
-    public function update(UpdateTeamMemberRequest $request, Team $team, User $user, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function update(UpdateTeamMemberRequest $request, Team $team, string $user, UpdateTeamMemberRoleHandler $handler, UserDirectory $users): RedirectResponse
     {
         Gate::authorize('updateMember', $team);
+
+        abort_if(! ctype_digit($user) || $users->find((int) $user) === null, 404);
 
         $newRole = TeamRole::from($request->validated('role'));
 
         try {
-            $lifecycle->updateMemberRole(new UpdateTeamMemberRole($request->user()->id, $team->id, $user->id, $newRole));
+            $handler->handle(new UpdateTeamMemberRole($request->user()->id, $team->id, (int) $user, $newRole));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }
@@ -41,14 +44,14 @@ class TeamMemberController extends Controller
     /**
      * Remove the specified team member.
      */
-    public function destroy(Request $request, Team $team, User $user, TeamLifecycleHandler $lifecycle): RedirectResponse
+    public function destroy(Request $request, Team $team, string $user, RemoveTeamMemberHandler $handler, UserDirectory $users): RedirectResponse
     {
         Gate::authorize('removeMember', $team);
 
-        abort_if($team->owner()?->is($user), 403, __('The team owner cannot be removed.'));
+        abort_if(! ctype_digit($user) || $users->find((int) $user) === null, 404);
 
         try {
-            $lifecycle->removeMember(new RemoveTeamMember($request->user()->id, $team->id, $user->id));
+            $handler->handle(new RemoveTeamMember($request->user()->id, $team->id, (int) $user));
         } catch (TeamOperationRejected $exception) {
             abort(403, $exception->getMessage());
         }

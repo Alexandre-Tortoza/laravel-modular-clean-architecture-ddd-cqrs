@@ -2,16 +2,21 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Repositories;
 
-use App\Models\User;
+use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
+use App\Modules\Identity\Application\Api\UserDirectory;
+use App\Modules\Identity\Application\Api\UserRecord;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Application\Data\TeamDeletionData;
 use App\Modules\Teams\Application\Data\TeamMembershipData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 
 class EloquentTeamManager implements ManagesTeams
 {
+    public function __construct(private UserDirectory $users, private TeamSelectionAccounts $selection) {}
+
     public function update(int $teamId, string $name): TeamData
     {
         $team = Team::query()->lockForUpdate()->findOrFail($teamId);
@@ -22,15 +27,16 @@ class EloquentTeamManager implements ManagesTeams
 
     public function membershipForUpdate(int $teamId, int $userId): TeamMembershipData
     {
-        [$team, $user] = $this->lockTeamAndUser($teamId, $userId);
+        $team = Team::query()->lockForUpdate()->findOrFail($teamId);
+        $user = $this->selection->lockMany([$userId])[$userId];
 
         return $this->membershipData($team, $user);
     }
 
-    /** @return array{actor: TeamMembershipData, member: TeamMembershipData} */
     public function membershipsForUpdate(int $teamId, int $actorId, int $userId): array
     {
-        [$team, $users] = $this->lockTeamAndUsers($teamId, [$actorId, $userId]);
+        $team = Team::query()->lockForUpdate()->findOrFail($teamId);
+        $users = $this->selection->lockMany([$actorId, $userId]);
 
         return [
             'actor' => $this->membershipData($team, $users[$actorId]),
@@ -41,45 +47,35 @@ class EloquentTeamManager implements ManagesTeams
     public function deletionForUpdate(int $teamId, int $userId): TeamDeletionData
     {
         $team = Team::query()->lockForUpdate()->findOrFail($teamId);
-        $affectedUserIds = User::query()->where('current_team_id', $teamId)->pluck('id')->map(fn (int $id): int => $id)->values()->all();
-        $users = $this->lockUsers(array_merge([$userId], $affectedUserIds));
-        $user = $users[$userId];
+        $users = $this->selection->lockMany(array_merge([$userId], $this->selection->userIdsSelectingTeam($teamId)));
         $affectedUsers = [];
 
         foreach ($users as $affectedUser) {
-            if ($affectedUser->id !== $userId && $affectedUser->current_team_id === $teamId) {
+            if ($affectedUser->id !== $userId && $this->users->currentTeamIdFor($affectedUser->id) === $teamId) {
                 $affectedUsers[] = [
                     'userId' => $affectedUser->id,
-                    'personalTeamId' => $affectedUser->personalTeam()?->id,
+                    'personalTeamId' => $this->personalTeamId($affectedUser->id),
                 ];
             }
         }
 
-        return new TeamDeletionData(
-            $team->id,
-            $team->is_personal,
-            $this->membershipData($team, $user),
-            $affectedUsers,
-        );
+        return new TeamDeletionData($team->id, $team->is_personal,
+            $this->membershipData($team, $users[$userId]), $affectedUsers);
     }
 
     public function setCurrentTeam(int $userId, ?int $teamId): void
     {
-        User::query()->whereKey($userId)->update(['current_team_id' => $teamId]);
+        $this->selection->select($userId, $teamId);
     }
 
     public function detachMember(int $teamId, int $userId): void
     {
-        Team::query()->findOrFail($teamId)
-            ->memberships()
-            ->where('user_id', $userId)
-            ->delete();
+        Membership::query()->where('team_id', $teamId)->where('user_id', $userId)->delete();
     }
 
     public function deleteTeam(int $teamId): void
     {
         $team = Team::query()->findOrFail($teamId);
-
         $team->invitations()->delete();
         $team->memberships()->delete();
         $team->delete();
@@ -87,74 +83,30 @@ class EloquentTeamManager implements ManagesTeams
 
     public function updateMemberRole(int $teamId, int $userId, TeamRole $role): void
     {
-        Team::query()
-            ->findOrFail($teamId)
-            ->memberships()
-            ->where('user_id', $userId)
-            ->firstOrFail()
-            ->update(['role' => $role]);
+        Membership::query()->where('team_id', $teamId)->where('user_id', $userId)->firstOrFail()->update(['role' => $role]);
     }
 
-    /** @return array{Team, User} */
-    private function lockTeamAndUser(int $teamId, int $userId): array
+    private function membershipData(Team $team, UserRecord $user): TeamMembershipData
     {
-        [$team, $users] = $this->lockTeamAndUsers($teamId, [$userId]);
-
-        return [$team, $users[$userId]];
-    }
-
-    /**
-     * @param  list<int>  $userIds
-     * @return array{Team, array<int, User>}
-     */
-    private function lockTeamAndUsers(int $teamId, array $userIds): array
-    {
-        $team = Team::query()->lockForUpdate()->findOrFail($teamId);
-
-        return [$team, $this->lockUsers($userIds)];
-    }
-
-    /**
-     * @param  list<int>  $userIds
-     * @return array<int, User>
-     */
-    private function lockUsers(array $userIds): array
-    {
-        $sortedUserIds = array_values(array_unique($userIds));
-        sort($sortedUserIds, SORT_NUMERIC);
-        $users = [];
-
-        foreach ($sortedUserIds as $userId) {
-            $users[$userId] = User::query()->lockForUpdate()->findOrFail($userId);
-        }
-
-        return $users;
-    }
-
-    private function membershipData(Team $team, User $user): TeamMembershipData
-    {
-        $availableTeams = array_values($user->teams()
-            ->orderByRaw('LOWER(teams.name)')
-            ->orderBy('teams.id')
-            ->get()
+        $currentTeamId = $this->users->currentTeamIdFor($user->id);
+        $availableTeams = array_values(Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', $user->id)->orderByRaw('LOWER(teams.name)')
+            ->orderBy('teams.id')->select('teams.*', 'team_members.role as membership_role')->get()
             ->map(fn (Team $availableTeam): TeamData => new TeamData(
-                $availableTeam->id,
-                $availableTeam->name,
-                $availableTeam->slug,
-                $availableTeam->is_personal,
-                $user->teamRole($availableTeam),
-                $user->isCurrentTeam($availableTeam),
-            ))
-            ->all());
+                $availableTeam->id, $availableTeam->name, $availableTeam->slug, $availableTeam->is_personal,
+                TeamRole::from($availableTeam->getAttribute('membership_role')), $currentTeamId === $availableTeam->id,
+            ))->all());
+        $membership = Membership::query()->where('team_id', $team->id)->where('user_id', $user->id)->first();
 
-        return new TeamMembershipData(
-            $team->id,
-            $team->is_personal,
-            $user->id,
-            $user->teamRole($team),
-            $user->current_team_id,
-            $user->personalTeam()?->id,
-            $availableTeams,
-        );
+        return new TeamMembershipData($team->id, $team->is_personal, $user->id, $membership?->role,
+            $currentTeamId, $this->personalTeamId($user->id), $availableTeams);
+    }
+
+    private function personalTeamId(int $userId): ?int
+    {
+        $id = Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', $userId)->where('teams.is_personal', true)->value('teams.id');
+
+        return $id === null ? null : (int) $id;
     }
 }

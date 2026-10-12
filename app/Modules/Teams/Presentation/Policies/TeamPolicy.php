@@ -2,99 +2,70 @@
 
 namespace App\Modules\Teams\Presentation\Policies;
 
-use App\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 class TeamPolicy
 {
-    /**
-     * Determine whether the user can view any models.
-     */
-    public function viewAny(User $user): bool
+    public function __construct(private TeamContext $teams) {}
+
+    public function viewAny(Authenticatable $user): bool
     {
         return true;
     }
 
-    /**
-     * Determine whether the user can view the model.
-     */
-    public function view(User $user, Team $team): bool
+    public function view(Authenticatable $user, Team $team): bool
     {
-        return $user->belongsToTeam($team);
+        return $this->teams->belongsToTeam((int) $user->getAuthIdentifier(), $team->id);
     }
 
-    /**
-     * Determine whether the user can create models.
-     */
-    public function create(User $user): bool
+    public function create(Authenticatable $user): bool
     {
         return true;
     }
 
-    /**
-     * Determine whether the user can update the model.
-     */
-    public function update(User $user, Team $team): bool
+    public function update(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::UpdateTeam);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::UpdateTeam);
     }
 
-    /**
-     * Determine whether the user can leave the team.
-     */
-    public function leave(User $user, Team $team): bool
+    public function leave(Authenticatable $user, Team $team): bool
     {
-        return ! $team->is_personal
-            && $user->belongsToTeam($team)
-            && ! $user->ownsTeam($team);
+        $userId = (int) $user->getAuthIdentifier();
+
+        return ! $team->is_personal && $this->teams->belongsToTeam($userId, $team->id)
+            && ! $this->teams->ownsTeam($userId, $team->id);
     }
 
-    /**
-     * Determine whether the user can add a member to the team.
-     */
-    public function addMember(User $user, Team $team): bool
+    public function addMember(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::AddMember);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::AddMember);
     }
 
-    /**
-     * Determine whether the user can update a member's role in the team.
-     */
-    public function updateMember(User $user, Team $team): bool
+    public function updateMember(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::UpdateMember);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::UpdateMember);
     }
 
-    /**
-     * Determine whether the user can remove a member from the team.
-     */
-    public function removeMember(User $user, Team $team): bool
+    public function removeMember(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::RemoveMember);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::RemoveMember);
     }
 
-    /**
-     * Determine whether the user can invite members to the team.
-     */
-    public function inviteMember(User $user, Team $team): bool
+    public function inviteMember(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::CreateInvitation);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::CreateInvitation);
     }
 
-    /**
-     * Determine whether the user can cancel invitations.
-     */
-    public function cancelInvitation(User $user, Team $team): bool
+    public function cancelInvitation(Authenticatable $user, Team $team): bool
     {
-        return $user->hasTeamPermission($team, TeamPermission::CancelInvitation);
+        return $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::CancelInvitation);
     }
 
-    /**
-     * Determine whether the user can delete the model.
-     */
-    public function delete(User $user, Team $team): bool
+    public function delete(Authenticatable $user, Team $team): bool
     {
-        return ! $team->is_personal && $user->hasTeamPermission($team, TeamPermission::DeleteTeam);
+        return ! $team->is_personal && $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::DeleteTeam);
     }
 }

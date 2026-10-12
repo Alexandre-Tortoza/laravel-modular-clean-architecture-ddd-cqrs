@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Profile\Application\Commands\UpdateProfile;
 use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
 

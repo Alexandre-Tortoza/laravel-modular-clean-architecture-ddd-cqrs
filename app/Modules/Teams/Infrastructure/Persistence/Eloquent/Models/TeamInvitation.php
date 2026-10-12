@@ -2,8 +2,6 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models;
 
-use App\Models\User;
-use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Factories\TeamInvitationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -25,7 +23,6 @@ use Illuminate\Support\Str;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Team $team
- * @property-read User $inviter
  */
 #[Fillable(['team_id', 'email', 'role', 'invited_by', 'expires_at', 'accepted_at'])]
 class TeamInvitation extends Model
@@ -60,40 +57,6 @@ class TeamInvitation extends Model
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
-    }
-
-    /**
-     * Get the user who sent the invitation.
-     *
-     * @return BelongsTo<User, $this>
-     */
-    public function inviter(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'invited_by');
-    }
-
-    /**
-     * Determine if the invitation has been accepted.
-     */
-    public function isAccepted(): bool
-    {
-        return $this->accepted_at !== null;
-    }
-
-    /**
-     * Determine if the invitation is pending.
-     */
-    public function isPending(): bool
-    {
-        return $this->accepted_at === null && ! $this->isExpired();
-    }
-
-    /**
-     * Determine if the invitation has expired.
-     */
-    public function isExpired(): bool
-    {
-        return $this->expires_at !== null && $this->expires_at->lessThanOrEqualTo(app(TeamClock::class)->now());
     }
 
     /**

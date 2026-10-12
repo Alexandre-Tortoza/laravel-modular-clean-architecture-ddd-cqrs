@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Profile\Presentation\Http\Concerns\ProfileValidationRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Facades\Validator;
@@ -51,6 +51,17 @@ test('email verification status is unchanged when the email address is unchanged
         ->assertRedirect(route('profile.edit'));
 
     expect($user->refresh()->email_verified_at)->not->toBeNull();
+});
+
+test('a profile cannot take another account email', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create(['email' => 'taken@example.com']);
+
+    $this->actingAs($user)
+        ->patch(route('profile.update'), ['name' => 'Changed', 'email' => $other->email])
+        ->assertSessionHasErrors('email');
+
+    expect($user->fresh()->email)->toBe($user->email);
 });
 
 test('user can delete their account', function () {

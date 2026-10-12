@@ -1,53 +1,44 @@
-# Architecture
+# Architecture and module contract
 
-This repository is being migrated incrementally to a modular Laravel monolith. The existing Laravel, Vue/Inertia, database, Fortify, and public HTTP contracts remain the compatibility surface while modules are moved one vertical slice at a time.
+This starter kit has four modules: Identity, Profile, Security, and Teams. Each module keeps used code under `app/Modules/<Module>/Domain`, `Application`, `Infrastructure`, `Presentation`, and `routes`. A module need not create every folder. Global Laravel bootstrap, Inertia sharing, Fortify response adapters, and the technical database migrations remain global composition code.
 
-## Current migration status
+## Ownership and dependencies
 
-`Teams` is a complete module. Its routes, dashboard HTTP adapter, middleware, Eloquent models, factories, migrations, notification, policy, validation rules, and provider are under `app/Modules/Teams`.
+| Data or operation          | Reader                                                                                                                   | Writer                                                                                 | Rule                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `users` identity and email | Identity; Teams through `UserDirectory`; Profile validation through `UserDirectory`; Security through `SecurityAccounts` | Identity through `ProfileAccounts`, `AccountCredentials`, or the Fortify reset adapter | No external module imports the Eloquent User model                              |
+| `current_team_id`          | Identity `UserDirectory`; Teams through it                                                                               | Identity `TeamSelectionAccounts`, called only from Teams write flows                   | Teams verifies membership and permission while its transaction is active        |
+| `teams`, `team_members`    | Teams queries and adapters                                                                                               | Teams handlers through internal ports                                                  | A team row and affected users are locked before concurrent membership decisions |
+| `team_invitations`         | Teams queries and adapters                                                                                               | Teams invitation handlers through an internal port                                     | Expiration and recipient rules run inside the write transaction                 |
 
-Completed Teams write slices are **create team**, **team lifecycle** (update, switch, leave, delete), **membership management**, and **invitations** (create, cancel, accept, decline, and expiry pruning). Each write is represented by an explicit immutable command and handled through direct dependency injection; no command bus or mediator is used.
+The dependency graph is Profile → Identity, Security → Identity, and Teams → Identity. Identity has no dependency on those modules. Global bootstrap may compose providers and framework adapters. There is no reverse dependency from Identity to Teams or duplicated User model. The Teams tables remain on the same database connection as `users`.
 
-The write handlers declare their transaction boundary through `RunsTeamTransactions`; the Eloquent adapter implements that boundary. The invitation repository currently also decides inviter permissions, assignable roles, duplicate invitations, existing membership, and expiration. Moving these decisions to pure rules called by the Application inside the transaction remains a follow-up; persistence and locking stay in the adapter. Notifications are sent after the write completes, outside the database transaction.
+`Application/Api` is the exported surface. `Identity/Application/Api/UserDirectory` and `SecurityAccounts` return read-only scalars, arrays, or immutable `UserRecord`. `ProfileAccounts` locks and saves only the authenticated executor account within Profile's transaction; `AccountCredentials` accepts an authenticated executor ID and a new password. Their APIs do not accept a separate target ID. The HTTP layer obtains that ID from the authenticated request; direct callers must establish a trusted actor context. Password confirmation and input validation occur at the request boundary. `UpdateProfileHandler` compares the locked email through the pure `EmailVerificationPolicy` before asking Identity to save the result. Fortify's token-based reset flow is its own framework adapter.
 
-`HTTP/Inertia request → command/handler → Application contract → Eloquent adapter → database`
+`TeamSelectionAccounts` is a separate, Teams-only Identity write integration. It locks users in ascending ID order, requires an active transaction on the User connection, identifies users selecting a team, and updates `current_team_id`. It is not a public user-facing authorization mechanism. The architecture suite rejects use from Profile, Security, or another module. `TeamContext` is the exported read-only Teams context for Inertia/Fortify and other trusted composition code. `TeamQueries` is an internal query port; `editFor(actorId, teamId)` rejects a caller without team membership even when invoked outside HTTP middleware. Read operations do not modify selection or send notifications.
 
-The public routes retain their validation, authorization, redirects, flash messages, session behavior, team slug generation, membership creation, current-team update, invitation handling, and scheduled pruning. No generic repository or command bus was introduced.
+External modules use `Application/Api` interfaces and the immutable data types in their signatures. Internal `Application/Contracts` ports, handlers, Eloquent models, builders, relations, and framework collections are not exported. Infrastructure may use Laravel and Eloquent to implement a module's own ports and may call another module's explicit API. Presentation translates requests, responses, redirects, and flashes. Domain contains pure PHP policies and enums and has no framework dependency.
 
-`TeamQueries` is the public read API currently used by the dashboard, Inertia shared props, Fortify login invitation context, and post-authentication redirects. It returns immutable data objects rather than Eloquent models.
+## Write flow: inviting a member
 
-`Profile` contains explicit update and deletion commands, along with its structural validation rules. Profile updates read the user under lock and compare and save the email within one transaction declared by `RunsProfileTransactions`. `Security` contains the password-update command. Their HTTP controllers remain compatibility adapters in the existing settings route tree.
+`POST settings/teams/{team}/invitations` enters `CreateTeamInvitationRequest` for format validation and `TeamInvitationController` for HTTP authorization and response handling. The controller constructs immutable `CreateTeamInvitation` and invokes its dedicated `CreateTeamInvitationHandler` directly. The handler opens the Teams transaction through `RunsTeamTransactions` and asks `ManagesTeamInvitations` for a snapshot protected by a team row lock, pending invitation locks, and ascending user locks through Identity `TeamSelectionAccounts`. `InvitationPolicy` then checks the inviter role, recipient membership, assignable role, and existing pending invitation. The adapter persists the invitation and the handler requests a notification after the write. `TeamInvitationSender` uses Laravel's queued `afterCommit()`, so an outer transaction still controls delivery and rollback discards it. The controller returns the existing redirect and flash response.
 
-## Module boundaries
+A matching read goes through `TeamQueries::editFor` for the team edit page. It verifies membership before projecting members, pending invitations, and permissions into plain data; it does not reconstruct an aggregate or write. Tests cover the policy without Laravel boot, handler port orchestration, direct read authorization, HTTP/Inertia responses, persistence, external commit/rollback, and PostgreSQL concurrency.
 
-```text
-app/Modules/Teams/
-  Domain/                 Framework-free rules and enums
-  Application/            Commands, immutable data, public contracts
-  Infrastructure/         Eloquent persistence, factories, migrations, provider
-  Presentation/           HTTP controllers, requests, middleware, policy, rules
-  routes/                 Route registration
-```
+`TeamLifecyclePolicy` and `InvitationPolicy` hold rules for owner, role, membership, personal-team deletion/leave, recipient, and expiration decisions. The team row and its membership or invitation rows form the lock-protected consistency scope for Teams decisions. A single use case may also update Identity's current-team pointer in the same local database transaction. That wider transaction is the **transaction boundary of the use case**, not a claim that every affected row is one domain aggregate. No synthetic aggregate hierarchy or Eloquent duplicate was added.
 
-Domain must not depend on Application, Infrastructure, Presentation, Laravel, Inertia, or SDKs. Application depends only on Domain and its own contracts/data. Infrastructure implements Application contracts. Presentation is the HTTP adapter.
+## Database resources and upgrades
 
-The explicit compatibility exceptions are the global `User` adapter, Laravel route model binding/policies inside Teams presentation, the Inertia/Fortify adapters under `app/Http` and `app/Providers`, and `App\\Actions\\Fortify\\ResetUserPassword`, which must implement Fortify's framework contract. They are deliberately narrow and remain covered by feature tests. No module exposes Eloquent models in its Application contracts.
+Identity owns the User model and its factory under `Infrastructure/Persistence/Eloquent`; the factory creates only a user. `Tests/Support/UserWithPersonalTeam.php` explicitly composes a user and personal team through the Teams create use case for tests. Identity's `DemoUserSeeder` and Teams' `DemoPersonalTeamSeeder` compose the optional demo account; global `DatabaseSeeder` calls them in order and is safe to rerun. Providers register each module's bindings, routes, migrations, and Teams policy/schedule. `bootstrap/providers.php` composes the providers.
 
-## Verification
+Exclusive passkey and two-factor migrations are loaded from Identity; exclusive Teams migrations remain in Teams. The historical `0001_01_01_000000_create_users_table.php` creates `users`, `password_reset_tokens`, and `sessions` together, so it remains **unchanged and global**. This provisioner location does not grant other modules access to Identity's data. Technical cache, job, and AI migrations also remain global. Existing basenames, timestamps, and schema effects are preserved; no migration is split, duplicated, or replayed to enforce a directory convention. For an existing database, use `php artisan migrate --force` after updating code; do not reset a live database. Verify a fresh install and an upgrade against separate disposable databases.
 
-```bash
-composer architecture
-php artisan test --testsuite=Integration
-composer test
-composer coverage
-npm run check
-npm run build
-```
+## Adding a module
 
-`tests/Architecture/TeamsArchitectureTest.php` and `tests/Architecture/ContractsArchitectureTest.php` check the Domain and Application dependency directions, module-boundary imports, contract signatures, model/factory placement, immutability, and prohibited debug helpers for the migrated modules. The Team Domain rule was proven with a temporary `Illuminate` dependency: it failed as expected, then the fixture was removed. The suite is intentionally scoped; framework adapters and legacy compatibility code are not hidden through broad namespace exclusions.
+1. Assign table and behavior ownership, then define any real Domain policy or value type. Avoid an empty layer or a model duplicate.
+2. Add one immutable command and dedicated handler per write use case. Put internal persistence and effect ports in `Application/Contracts`; export only integration contracts needed by another module through `Application/Api`.
+3. Implement owned storage, migrations, factories, seeders, and bindings in Infrastructure. Keep existing migrations immutable. Put HTTP validation, routes, response mapping, and middleware in Presentation and register them through the module provider.
+4. Test the rule without Laravel boot, the handler with relevant doubles, adapters with the database, cross-module access, HTTP/Inertia behavior, and concurrency where locks matter. Run the architecture suite; a newly added module is discovered automatically and forbidden dependencies fail the suite.
+5. Register the provider in `bootstrap/providers.php`, regenerate Wayfinder if routes changed, then run `composer test`, `COMPOSER_PROCESS_TIMEOUT=0 composer coverage`, `composer ci:check`, `npm run build`, migrations, seed, route/config caches, and the PostgreSQL concurrency suite against disposable environments.
 
-Architecture tests are static boundary checks, not proof that dynamic calls cannot bypass a boundary or that a write is correct. Feature and integration tests continue to validate HTTP behavior, authorization, database effects, factories, providers, and the scheduled invitation cleanup.
-
-## Next slices
-
-Fortify's own reset-password action, passkeys, and two-factor lifecycle remain framework adapters. The global authentication model remains an explicit compatibility boundary. Future application capabilities should be added from real code and receive behavior coverage plus architecture rules before their migration; they should not be created merely to fill the module tree.
+The architecture inspector parses PHP source to discover modules, dependency edges, Eloquent placement, public signatures, immutable value classes, and framework helper calls. Its temporary fixture proves that a new forbidden module dependency fails. Static checks cannot detect every dynamic container lookup, SQL string, or authorization mistake; behavioral and database tests provide separate evidence. CI runs the standard checks and the PostgreSQL concurrency suite. Run the exact coverage gate locally with `COMPOSER_PROCESS_TIMEOUT=0 composer coverage`; it is not part of the current CI workflow.

@@ -2,14 +2,14 @@
 
 namespace App\Modules\Security\Application\Commands;
 
-use App\Modules\Security\Application\Contracts\UpdatesPasswords;
+use App\Modules\Identity\Application\Api\AccountCredentials;
 
 class UpdatePasswordHandler
 {
-    public function __construct(private UpdatesPasswords $passwords) {}
+    public function __construct(private AccountCredentials $accounts) {}
 
     public function handle(UpdatePassword $command): void
     {
-        $this->passwords->update($command->userId, $command->password);
+        $this->accounts->changeOwnPassword($command->userId, $command->password);
     }
 }

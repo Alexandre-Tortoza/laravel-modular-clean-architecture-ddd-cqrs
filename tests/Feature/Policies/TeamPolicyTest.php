@@ -1,37 +1,38 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Presentation\Policies\TeamPolicy;
+use Tests\Support\UserWithPersonalTeam;
 
 test('allows viewing only teams a user belongs to', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
 
     $policy = app(TeamPolicy::class);
 
     expect($policy->viewAny($user))->toBeTrue()
         ->and($policy->create($user))->toBeTrue()
         ->and($policy->view($user, $team))->toBeTrue()
-        ->and($policy->view(User::factory()->create(), $team))->toBeFalse();
+        ->and($policy->view(UserWithPersonalTeam::create(), $team))->toBeFalse();
 });
 
 test('allows actions only for roles with the required permission', function () {
     $team = Team::factory()->create();
-    $owner = User::factory()->create();
-    $admin = User::factory()->create();
-    $member = User::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
-    $team->members()->attach($admin, ['role' => TeamRole::Admin->value]);
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
+    $owner = UserWithPersonalTeam::create();
+    $admin = UserWithPersonalTeam::create();
+    $member = UserWithPersonalTeam::create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $admin->id, 'role' => TeamRole::Admin]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
     $policy = app(TeamPolicy::class);
 
     foreach (TeamPermission::cases() as $permission) {
-        expect($owner->hasTeamPermission($team, $permission))->toBeTrue();
+        expect(app(TeamContext::class)->hasPermission($owner->id, $team->id, $permission))->toBeTrue();
     }
 
     expect($policy->update($admin, $team))->toBeTrue()
@@ -46,11 +47,11 @@ test('allows actions only for roles with the required permission', function () {
 test('allows only non-owner members to leave non-personal teams', function () {
     $policy = app(TeamPolicy::class);
     $team = Team::factory()->create();
-    $owner = User::factory()->create();
-    $member = User::factory()->create();
-    $outsider = User::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
+    $owner = UserWithPersonalTeam::create();
+    $member = UserWithPersonalTeam::create();
+    $outsider = UserWithPersonalTeam::create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
     expect($policy->leave($member, $team))->toBeTrue()
         ->and($policy->leave($owner, $team))->toBeFalse()

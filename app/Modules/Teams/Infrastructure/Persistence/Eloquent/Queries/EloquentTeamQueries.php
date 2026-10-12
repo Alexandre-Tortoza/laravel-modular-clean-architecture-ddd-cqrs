@@ -2,7 +2,7 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Queries;
 
-use App\Models\User;
+use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Application\Data\PendingTeamInvitationData;
@@ -11,48 +11,64 @@ use App\Modules\Teams\Application\Data\TeamEditData;
 use App\Modules\Teams\Application\Data\TeamPermissionsData;
 use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class EloquentTeamQueries implements TeamQueries
 {
-    public function __construct(private TeamClock $clock) {}
+    public function __construct(private TeamClock $clock, private UserDirectory $users) {}
 
     public function forUser(int $userId, bool $includeCurrent = false): array
     {
-        $user = User::query()->findOrFail($userId);
+        $this->ensureUserExists($userId);
+        $currentTeamId = $this->users->currentTeamIdFor($userId);
 
-        return array_values($user->teams()
+        return array_values(Team::query()
+            ->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', $userId)
             ->orderBy('teams.name')
+            ->select('teams.*', 'team_members.role as membership_role')
             ->get()
-            ->map(fn (Team $team): TeamData => $this->teamData($user, $team))
+            ->map(fn (Team $team): TeamData => new TeamData(
+                $team->id, $team->name, $team->slug, $team->is_personal,
+                TeamRole::from($team->getAttribute('membership_role')), $currentTeamId === $team->id,
+            ))
             ->filter(fn (TeamData $team): bool => $includeCurrent || ! $team->isCurrent)
-            ->values()
-            ->all());
+            ->values()->all());
     }
 
     public function currentForUser(int $userId): ?TeamData
     {
-        $user = User::query()->findOrFail($userId);
-        $team = $user->currentTeam;
+        $this->ensureUserExists($userId);
+        $teamId = $this->users->currentTeamIdFor($userId);
+        $team = $teamId === null ? null : Team::query()->find($teamId);
 
-        return $team instanceof Team ? $this->teamData($user, $team) : null;
+        return $team === null ? null : $this->teamData($team, $userId, $teamId);
     }
 
     public function currentOrPersonalForUser(int $userId): ?TeamData
     {
-        $user = User::query()->findOrFail($userId);
-        $team = $user->currentTeam ?? $user->personalTeam();
+        $current = $this->currentForUser($userId);
 
-        return $team instanceof Team ? $this->teamData($user, $team) : null;
+        if ($current !== null) {
+            return $current;
+        }
+
+        $personal = Team::query()->join('team_members', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', $userId)->where('teams.is_personal', true)
+            ->select('teams.*')->first();
+
+        return $personal === null ? null : $this->teamData($personal, $userId, null);
     }
 
     public function permissionsFor(int $userId, int $teamId): TeamPermissionsData
     {
-        $user = User::query()->findOrFail($userId);
-        $team = Team::query()->findOrFail($teamId);
-        $role = $user->teamRole($team);
+        $this->ensureUserExists($userId);
+        Team::query()->findOrFail($teamId);
+        $role = $this->roleFor($userId, $teamId);
 
         return new TeamPermissionsData(
             canUpdateTeam: $role?->hasPermission(TeamPermission::UpdateTeam) ?? false,
@@ -67,21 +83,33 @@ class EloquentTeamQueries implements TeamQueries
 
     public function editFor(int $userId, int $teamId): TeamEditData
     {
-        $user = User::query()->findOrFail($userId);
+        $this->ensureUserExists($userId);
+        if (! $this->belongsToTeam($userId, $teamId)) {
+            throw new TeamOperationRejected('The user does not belong to this team.');
+        }
+
         $team = Team::query()->findOrFail($teamId);
+        $memberships = $team->memberships()->orderBy('id')->get();
+        $members = $this->users->findMany($memberships->pluck('user_id')->all());
+        $memberData = [];
+
+        foreach ($memberships as $membership) {
+            $member = $members[$membership->user_id] ?? null;
+
+            if ($member === null) {
+                continue;
+            }
+
+            $memberData[] = [
+                'id' => $member->id, 'name' => $member->name, 'email' => $member->email,
+                'avatar' => $member->avatar, 'role' => $membership->role->value,
+                'role_label' => $membership->role->label(),
+            ];
+        }
 
         return new TeamEditData(
-            $this->teamData($user, $team),
-            array_values($team->members()->get()->map(function (User $member): array {
-                $membership = $member->getRelation('pivot');
-                $role = $membership instanceof Membership ? $membership->role : TeamRole::Member;
-
-                return [
-                    'id' => $member->id, 'name' => $member->name, 'email' => $member->email,
-                    'avatar' => $member->avatar, 'role' => $role->value,
-                    'role_label' => $role->label(),
-                ];
-            })->all()),
+            $this->teamData($team, $userId, $this->users->currentTeamIdFor($userId)),
+            $memberData,
             array_values($team->invitations()->whereNull('accepted_at')->get()->map(fn (TeamInvitation $invitation): array => [
                 'code' => $invitation->code, 'email' => $invitation->email,
                 'role' => $invitation->role->value, 'role_label' => $invitation->role->label(),
@@ -93,56 +121,61 @@ class EloquentTeamQueries implements TeamQueries
 
     public function pendingInvitationsForEmail(string $email): array
     {
-        $currentTime = $this->clock->now();
-
-        return array_values(TeamInvitation::query()
-            ->with(['inviter', 'team'])
-            ->whereRaw('LOWER(email) = ?', [strtolower($email)])
+        return array_values(TeamInvitation::query()->with('team')
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
             ->whereNull('accepted_at')
-            ->where(fn ($query) => $query
-                ->whereNull('expires_at')
-                ->orWhere('expires_at', '>', $currentTime))
-            ->latest()
-            ->get()
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', $this->clock->now()))
+            ->latest()->get()
             ->map(fn (TeamInvitation $invitation): PendingTeamInvitationData => $this->pendingInvitationData($invitation))
             ->all());
     }
 
     public function pendingInvitationByCode(string $code): ?PendingTeamInvitationData
     {
-        $currentTime = $this->clock->now();
-
-        $invitation = TeamInvitation::query()
-            ->with('team')
-            ->where('code', $code)
+        $invitation = TeamInvitation::query()->with('team')->where('code', $code)
             ->whereNull('accepted_at')
-            ->where(fn ($query) => $query
-                ->whereNull('expires_at')
-                ->orWhere('expires_at', '>', $currentTime))
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', $this->clock->now()))
             ->first();
 
-        return $invitation instanceof TeamInvitation ? $this->pendingInvitationData($invitation) : null;
+        return $invitation === null ? null : $this->pendingInvitationData($invitation);
     }
 
-    private function teamData(User $user, Team $team): TeamData
+    public function belongsToTeam(int $userId, int $teamId): bool
     {
-        return new TeamData(
-            id: $team->id,
-            name: $team->name,
-            slug: $team->slug,
-            isPersonal: $team->is_personal,
-            role: $user->teamRole($team),
-            isCurrent: $user->isCurrentTeam($team),
-        );
+        return Membership::query()->where('team_id', $teamId)->where('user_id', $userId)->exists();
+    }
+
+    public function roleFor(int $userId, int $teamId): ?TeamRole
+    {
+        return Membership::query()->where('team_id', $teamId)->where('user_id', $userId)->first()?->role;
+    }
+
+    public function hasPermission(int $userId, int $teamId, TeamPermission $permission): bool
+    {
+        return $this->roleFor($userId, $teamId)?->hasPermission($permission) ?? false;
+    }
+
+    public function ownsTeam(int $userId, int $teamId): bool
+    {
+        return $this->roleFor($userId, $teamId) === TeamRole::Owner;
+    }
+
+    private function teamData(Team $team, int $userId, ?int $currentTeamId): TeamData
+    {
+        return new TeamData($team->id, $team->name, $team->slug, $team->is_personal,
+            $this->roleFor($userId, $team->id), $currentTeamId === $team->id);
     }
 
     private function pendingInvitationData(TeamInvitation $invitation): PendingTeamInvitationData
     {
-        return new PendingTeamInvitationData(
-            code: $invitation->code,
-            teamName: $invitation->team->name,
-            teamSlug: $invitation->team->slug,
-            inviterName: $invitation->relationLoaded('inviter') ? $invitation->inviter->name : null,
-        );
+        return new PendingTeamInvitationData($invitation->code, $invitation->team->name, $invitation->team->slug,
+            $this->users->find($invitation->invited_by)?->name);
+    }
+
+    private function ensureUserExists(int $userId): void
+    {
+        if ($this->users->find($userId) === null) {
+            throw new ModelNotFoundException;
+        }
     }
 }

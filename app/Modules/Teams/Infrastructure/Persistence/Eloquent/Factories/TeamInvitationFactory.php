@@ -2,7 +2,6 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Factories;
 
-use App\Models\User;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
@@ -27,7 +26,6 @@ class TeamInvitationFactory extends Factory
             'team_id' => Team::factory(),
             'email' => fake()->unique()->safeEmail(),
             'role' => TeamRole::Member,
-            'invited_by' => User::factory(),
             'expires_at' => null,
             'accepted_at' => null,
         ];

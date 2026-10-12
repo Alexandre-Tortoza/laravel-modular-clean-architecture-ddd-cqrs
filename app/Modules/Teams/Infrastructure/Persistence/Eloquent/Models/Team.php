@@ -2,15 +2,12 @@
 
 namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models;
 
-use App\Models\User;
-use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Concerns\GeneratesUniqueTeamSlugs;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
@@ -25,7 +22,6 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Collection<int, TeamInvitation> $invitations
  * @property-read Collection<int, Membership> $memberships
- * @property-read Collection<int, User> $members
  */
 #[Fillable(['name', 'slug', 'is_personal'])]
 class Team extends Model
@@ -56,29 +52,6 @@ class Team extends Model
                 $team->slug = static::generateUniqueTeamSlug($team->name, $team->id);
             }
         });
-    }
-
-    /**
-     * Get the team owner.
-     */
-    public function owner(): ?Model
-    {
-        return $this->members()
-            ->wherePivot('role', TeamRole::Owner->value)
-            ->first();
-    }
-
-    /**
-     * Get all members of this team.
-     *
-     * @return BelongsToMany<User, $this, Membership, 'pivot'>
-     */
-    public function members(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class, 'team_members', 'team_id', 'user_id')
-            ->using(Membership::class)
-            ->withPivot(['role'])
-            ->withTimestamps();
     }
 
     /**

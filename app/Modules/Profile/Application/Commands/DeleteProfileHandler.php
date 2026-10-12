@@ -2,14 +2,14 @@
 
 namespace App\Modules\Profile\Application\Commands;
 
-use App\Modules\Profile\Application\Contracts\DeletesProfiles;
+use App\Modules\Identity\Application\Api\ProfileAccounts;
 
 class DeleteProfileHandler
 {
-    public function __construct(private DeletesProfiles $profiles) {}
+    public function __construct(private ProfileAccounts $accounts) {}
 
     public function handle(DeleteProfile $command): void
     {
-        $this->profiles->delete($command->userId);
+        $this->accounts->deleteOwnProfile($command->userId);
     }
 }

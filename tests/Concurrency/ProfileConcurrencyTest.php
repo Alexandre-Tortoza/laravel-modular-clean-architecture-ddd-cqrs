@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Profile\Application\Commands\UpdateProfile;
 use App\Modules\Profile\Application\Commands\UpdateProfileHandler;
 use Illuminate\Database\Events\QueryExecuted;
@@ -101,12 +101,13 @@ test('a stale profile update cannot preserve verification for another email', fu
     }
 
     rmdir($barrier);
-    $finalUser = $user->fresh();
-
     expect($parentResult)->toBe('ok')
         ->and($childResult)->toBe('ok')
         ->and(pcntl_wexitstatus($status))->toBe(0)
-        ->and($lockedRead)->toBeTrue()
-        ->and($finalUser->email)->toBe('changed@example.com')
+        ->and($lockedRead)->toBeTrue();
+
+    $finalUser = $user->fresh();
+
+    expect($finalUser->email)->toBe('changed@example.com')
         ->and($finalUser->email_verified_at)->not->toBeNull();
 });

@@ -1,28 +1,34 @@
 <?php
 
-use App\Models\User;
+use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitation;
+use App\Modules\Teams\Application\Commands\AcceptTeamInvitationHandler;
 use App\Modules\Teams\Application\Commands\CreateTeam;
 use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use App\Modules\Teams\Application\Commands\DeleteTeam;
+use App\Modules\Teams\Application\Commands\DeleteTeamHandler;
 use App\Modules\Teams\Application\Commands\LeaveTeam;
+use App\Modules\Teams\Application\Commands\LeaveTeamHandler;
 use App\Modules\Teams\Application\Commands\RemoveTeamMember;
-use App\Modules\Teams\Application\Commands\TeamInvitationHandler;
-use App\Modules\Teams\Application\Commands\TeamLifecycleHandler;
+use App\Modules\Teams\Application\Commands\RemoveTeamMemberHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeam;
+use App\Modules\Teams\Application\Commands\UpdateTeamHandler;
 use App\Modules\Teams\Application\Commands\UpdateTeamMemberRole;
+use App\Modules\Teams\Application\Commands\UpdateTeamMemberRoleHandler;
 use App\Modules\Teams\Application\Contracts\ManagesTeams;
-use App\Modules\Teams\Application\Exceptions\TeamInvitationResponseRejected;
-use App\Modules\Teams\Application\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use App\Modules\Teams\Domain\Exceptions\TeamInvitationResponseRejected;
+use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
+use Tests\Support\UserWithPersonalTeam;
 
 test('creating a team selects it without changing URL defaults in the write layer', function () {
-    $user = User::factory()->create();
-    $previousTeamSlug = $user->currentTeam->slug;
+    $user = UserWithPersonalTeam::create();
+    $previousTeamSlug = app(TeamContext::class)->currentForUser($user->id)->slug;
     URL::defaults(['current_team' => $previousTeamSlug]);
 
     $createdTeam = app(CreateTeamHandler::class)->handle(new CreateTeam($user->id, 'New Team'));
@@ -32,79 +38,79 @@ test('creating a team selects it without changing URL defaults in the write laye
 });
 
 test('accept handler rejects invitations sent to another email address', function () {
-    $owner = User::factory()->create();
-    $recipient = User::factory()->create(['email' => 'recipient@example.com']);
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'recipient@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $invitation = TeamInvitation::factory()->create([
         'team_id' => $team->id,
         'email' => 'someone-else@example.com',
         'invited_by' => $owner->id,
     ]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->accept(new AcceptTeamInvitation($recipient->id, $invitation->id)))
+    expect(fn () => app(AcceptTeamInvitationHandler::class)->handle(new AcceptTeamInvitation($recipient->id, $invitation->id)))
         ->toThrow(TeamInvitationResponseRejected::class);
 
-    expect($recipient->fresh()->belongsToTeam($team))->toBeFalse()
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse()
         ->and($invitation->fresh()->accepted_at)->toBeNull();
 });
 
 test('accept handler rejects accepted and expired invitations', function (string $state): void {
-    $owner = User::factory()->create();
-    $recipient = User::factory()->create(['email' => 'recipient@example.com']);
+    $owner = UserWithPersonalTeam::create();
+    $recipient = UserWithPersonalTeam::create(['email' => 'recipient@example.com']);
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
     $invitation = TeamInvitation::factory()->{$state}()->create([
         'team_id' => $team->id,
         'email' => $recipient->email,
         'invited_by' => $owner->id,
     ]);
 
-    expect(fn () => app(TeamInvitationHandler::class)->accept(new AcceptTeamInvitation($recipient->id, $invitation->id)))
+    expect(fn () => app(AcceptTeamInvitationHandler::class)->handle(new AcceptTeamInvitation($recipient->id, $invitation->id)))
         ->toThrow(TeamInvitationResponseRejected::class);
 
-    expect($recipient->fresh()->belongsToTeam($team))->toBeFalse();
+    expect(app(TeamContext::class)->belongsToTeam($recipient->id, $team->id))->toBeFalse();
 })->with(['accepted', 'expired']);
 
 test('leave handler protects personal teams and team owners', function (bool $personal): void {
-    $user = User::factory()->create();
-    $team = $personal ? $user->personalTeam() : Team::factory()->create();
+    $user = UserWithPersonalTeam::create();
+    $team = $personal ? UserWithPersonalTeam::personalTeam($user) : Team::factory()->create();
 
     if (! $personal) {
-        $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+        $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Owner]);
     }
 
-    expect(fn () => app(TeamLifecycleHandler::class)->leave(new LeaveTeam($user->id, $team->id)))
+    expect(fn () => app(LeaveTeamHandler::class)->handle(new LeaveTeam($user->id, $team->id)))
         ->toThrow(TeamOperationRejected::class);
 
-    expect($user->fresh()->belongsToTeam($team))->toBeTrue();
+    expect(app(TeamContext::class)->belongsToTeam($user->id, $team->id))->toBeTrue();
 })->with([true, false]);
 
 test('remove handler protects team owners', function () {
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
-    expect(fn () => app(TeamLifecycleHandler::class)->removeMember(new RemoveTeamMember($owner->id, $team->id, $owner->id)))
+    expect(fn () => app(RemoveTeamMemberHandler::class)->handle(new RemoveTeamMember($owner->id, $team->id, $owner->id)))
         ->toThrow(TeamOperationRejected::class);
 
-    expect($owner->fresh()->belongsToTeam($team))->toBeTrue();
+    expect(app(TeamContext::class)->belongsToTeam($owner->id, $team->id))->toBeTrue();
 });
 
 test('delete handler protects personal teams', function () {
-    $user = User::factory()->create();
-    $team = $user->personalTeam();
+    $user = UserWithPersonalTeam::create();
+    $team = UserWithPersonalTeam::personalTeam($user);
 
-    expect(fn () => app(TeamLifecycleHandler::class)->delete(new DeleteTeam($user->id, $team->id)))
+    expect(fn () => app(DeleteTeamHandler::class)->handle(new DeleteTeam($user->id, $team->id)))
         ->toThrow(TeamOperationRejected::class);
 
     $this->assertNotSoftDeleted('teams', ['id' => $team->id]);
 });
 
 test('team and user locks are acquired in canonical order', function () {
-    $user = User::factory()->create();
+    $user = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $user->id, 'role' => TeamRole::Member]);
 
     DB::flushQueryLog();
     DB::enableQueryLog();
@@ -121,56 +127,55 @@ test('team and user locks are acquired in canonical order', function () {
 });
 
 test('direct team updates reject an executor without permission', function () {
-    $member = User::factory()->create();
+    $member = UserWithPersonalTeam::create();
     $team = Team::factory()->create(['name' => 'Original Name']);
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
-    expect(fn () => app(TeamLifecycleHandler::class)->update(new UpdateTeam($member->id, $team->id, 'Changed Name')))
+    expect(fn () => app(UpdateTeamHandler::class)->handle(new UpdateTeam($member->id, $team->id, 'Changed Name')))
         ->toThrow(TeamOperationRejected::class);
 
     expect($team->fresh()->name)->toBe('Original Name');
 });
 
 test('direct membership changes reject an executor without permission', function (string $action) {
-    $actor = User::factory()->create();
-    $member = User::factory()->create();
+    $actor = UserWithPersonalTeam::create();
+    $member = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($actor, ['role' => TeamRole::Admin->value]);
-    $team->members()->attach($member, ['role' => TeamRole::Member->value]);
-    $handler = app(TeamLifecycleHandler::class);
+    $team->memberships()->create(['user_id' => $actor->id, 'role' => TeamRole::Admin]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
 
     $operation = match ($action) {
-        'update' => fn () => $handler->updateMemberRole(new UpdateTeamMemberRole($actor->id, $team->id, $member->id, TeamRole::Admin)),
-        'remove' => fn () => $handler->removeMember(new RemoveTeamMember($actor->id, $team->id, $member->id)),
+        'update' => fn () => app(UpdateTeamMemberRoleHandler::class)->handle(new UpdateTeamMemberRole($actor->id, $team->id, $member->id, TeamRole::Admin)),
+        'remove' => fn () => app(RemoveTeamMemberHandler::class)->handle(new RemoveTeamMember($actor->id, $team->id, $member->id)),
     };
 
     expect($operation)->toThrow(TeamOperationRejected::class);
 
-    expect($member->fresh()->belongsToTeam($team))->toBeTrue()
-        ->and($team->members()->whereKey($member->id)->first()->pivot->role)->toBe(TeamRole::Member);
+    expect(app(TeamContext::class)->belongsToTeam($member->id, $team->id))->toBeTrue()
+        ->and($team->memberships()->where('user_id', $member->id)->first()->role)->toBe(TeamRole::Member);
 })->with(['update', 'remove']);
 
 test('direct role changes cannot demote the current team owner', function () {
-    $owner = User::factory()->create();
+    $owner = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
 
-    expect(fn () => app(TeamLifecycleHandler::class)->updateMemberRole(new UpdateTeamMemberRole($owner->id, $team->id, $owner->id, TeamRole::Member)))
+    expect(fn () => app(UpdateTeamMemberRoleHandler::class)->handle(new UpdateTeamMemberRole($owner->id, $team->id, $owner->id, TeamRole::Member)))
         ->toThrow(TeamOperationRejected::class);
 
-    expect($team->members()->whereKey($owner->id)->first()->pivot->role)->toBe(TeamRole::Owner);
+    expect($team->memberships()->where('user_id', $owner->id)->first()->role)->toBe(TeamRole::Owner);
 });
 
 test('team and several user locks follow ascending ids with an intermediate actor', function () {
-    $lowerIdMember = User::factory()->create();
-    $actor = User::factory()->create();
-    $higherIdMember = User::factory()->create();
+    $lowerIdMember = UserWithPersonalTeam::create();
+    $actor = UserWithPersonalTeam::create();
+    $higherIdMember = UserWithPersonalTeam::create();
     $team = Team::factory()->create();
-    $team->members()->attach($lowerIdMember, ['role' => TeamRole::Member->value]);
-    $team->members()->attach($actor, ['role' => TeamRole::Owner->value]);
-    $team->members()->attach($higherIdMember, ['role' => TeamRole::Member->value]);
-    $lowerIdMember->update(['current_team_id' => $team->id]);
-    $higherIdMember->update(['current_team_id' => $team->id]);
+    $team->memberships()->create(['user_id' => $lowerIdMember->id, 'role' => TeamRole::Member]);
+    $team->memberships()->create(['user_id' => $actor->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $higherIdMember->id, 'role' => TeamRole::Member]);
+    app(TeamSelectionAccounts::class)->select($lowerIdMember->id, $team->id);
+    app(TeamSelectionAccounts::class)->select($higherIdMember->id, $team->id);
 
     DB::flushQueryLog();
     DB::enableQueryLog();

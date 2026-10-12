@@ -2,14 +2,14 @@
 
 namespace App\Http\Middleware;
 
-use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Data\TeamData;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
 {
-    public function __construct(private TeamQueries $teams) {}
+    public function __construct(private TeamContext $teams) {}
 
     /**
      * The root template that's loaded on the first page visit.

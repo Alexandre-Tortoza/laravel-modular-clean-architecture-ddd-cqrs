@@ -2,12 +2,11 @@
 
 namespace App\Providers;
 
-use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Responses\LoginResponse;
 use App\Http\Responses\PasskeyLoginResponse;
 use App\Http\Responses\TwoFactorLoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
-use App\Modules\Teams\Application\Contracts\TeamQueries;
+use App\Modules\Teams\Application\Api\TeamContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -39,17 +38,8 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
-    }
-
-    /**
-     * Configure Fortify actions.
-     */
-    private function configureActions(): void
-    {
-        Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
     }
 
     /**
@@ -118,7 +108,7 @@ class FortifyServiceProvider extends ServiceProvider
             return null;
         }
 
-        $invitation = app(TeamQueries::class)->pendingInvitationByCode($invitationCode);
+        $invitation = app(TeamContext::class)->pendingInvitationByCode($invitationCode);
 
         if (! $invitation) {
             return null;
