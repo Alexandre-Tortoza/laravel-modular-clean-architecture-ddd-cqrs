@@ -231,7 +231,7 @@ jobs:
           docker compose exec -T pgsql psql -U sail -d laravel -v ON_ERROR_STOP=1 -c "CREATE TABLE sail_persistence_probe (id integer PRIMARY KEY); INSERT INTO sail_persistence_probe VALUES (42)"
           ./vendor/bin/sail composer setup
           test "$environment_before" = "$(sha256sum .env)"
-          ./vendor/bin/sail stop
+          docker compose down
           ./vendor/bin/sail up --detach --wait --wait-timeout 120
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
           curl --fail --retry 10 --retry-connrefused --retry-delay 2 http://localhost:8000/up

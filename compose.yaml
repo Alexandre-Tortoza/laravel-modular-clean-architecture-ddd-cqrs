@@ -25,6 +25,12 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+        healthcheck:
+            test: ['CMD', 'curl', '--fail', '--silent', 'http://127.0.0.1/up']
+            interval: 5s
+            retries: 10
+            start_period: 10s
+            timeout: 5s
         depends_on:
             pgsql:
                 condition: service_healthy
