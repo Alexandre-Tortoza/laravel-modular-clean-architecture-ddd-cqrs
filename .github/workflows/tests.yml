@@ -35,8 +35,69 @@ jobs:
       - name: Setup Application
         run: composer setup
 
+      - name: Verify setup can be rerun without changing the application key
+        run: |
+          environment_before="$(sha256sum .env)"
+          composer setup
+          test "$environment_before" = "$(sha256sum .env)"
+
       - name: Run CI Checks
         run: composer ci:check
+
+  minimum-php:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Build minimum PHP test environment
+        run: |
+          docker build --tag minimum-php - <<'DOCKERFILE'
+          FROM php:8.4.1-cli-bookworm@sha256:246d2ca7e9cf21c4e7c354ce87e87bf1ad6d41b2061c77668845e04a8f8889d4
+          RUN apt-get update && apt-get install -y --no-install-recommends unzip git \
+              && rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+
+      - name: Install dependencies on minimum PHP
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --env COMPOSER_HOME=/tmp/composer \
+            --volume "$PWD:/app" \
+            --volume "$(command -v composer):/usr/local/bin/composer:ro" \
+            --workdir /app minimum-php sh -ec '
+              test "$(php -r "echo PHP_VERSION;")" = "8.4.1"
+              composer install --no-interaction --prefer-dist
+              composer check-platform-reqs
+              cp .env.example .env
+              php artisan app:ensure-key --no-interaction
+              php artisan migrate --force --no-interaction
+            '
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run tests on minimum PHP
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --volume "$PWD:/app" --workdir /app minimum-php \
+            php artisan test --compact
 
   coverage:
     if: github.event_name == 'workflow_dispatch'
