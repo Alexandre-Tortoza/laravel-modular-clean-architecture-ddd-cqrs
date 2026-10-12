@@ -3,12 +3,13 @@
     "name": "laravel/vue-starter-kit",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
+    "license": "proprietary",
     "keywords": [
         "laravel",
         "framework"
     ],
     "require": {
-        "php": "^8.3",
+        "php": "^8.4.1",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/ai": "^1.2",
         "laravel/chisel": "^0.1.0",
@@ -46,7 +47,8 @@
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
-            "@php artisan key:generate --no-interaction",
+            "@php artisan config:clear --no-interaction",
+            "@php artisan app:ensure-key --no-interaction",
             "@php artisan migrate --force --no-interaction",
             "npm ci",
             "npm run build"
@@ -65,6 +67,7 @@
             "Composer\\Config::disableProcessTimeout",
             "npm run check",
             "npm audit --audit-level=high",
+            "@composer audit --locked --abandoned=fail",
             "@architecture",
             "npm run types:check",
             "@test"

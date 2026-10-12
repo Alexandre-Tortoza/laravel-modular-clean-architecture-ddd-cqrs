@@ -2,11 +2,11 @@
 
 Public reference implementation of a Laravel 13 + Vue 3/Inertia 3 modular monolith using Fortify, Wayfinder, pragmatic Clean Architecture, DDD, and lightweight CQRS. The example is a working Teams flow; there is no command bus, event store, separate database, or sample CRUD added solely for the architecture.
 
-The source is available to study; this repository does not grant a license to reuse or redistribute it. Its dependencies retain their own licenses.
+This project is a reference for study, not a reusable template. The source is available to study; this repository does not grant a license to reuse or redistribute it. Its dependencies retain their own licenses.
 
 ## Requirements and first install
 
-The committed lockfile requires PHP 8.4.1 or newer for both runtime and development dependencies; PHP 8.5 is used in CI. Install SQLite PDO, Composer 2, Node 22.18 or newer in the 22.x series, and npm. The lockfiles select Laravel 13.35, Fortify 1.41, Inertia Laravel 3.5, Pest 5.3, and Vite 8. Use `composer show --direct` and `npm ls --depth=0` for the exact installed versions on your machine. PostgreSQL, `pdo_pgsql`, `pcntl`, and `posix` are needed to run the concurrency suite locally. Validation of the minimum PHP version is part of the template publication checklist; an install on PHP 8.5 alone does not prove that minimum.
+The project and committed lockfile require PHP 8.4.1 or newer for both runtime and development dependencies. CI runs the main checks on PHP 8.5 and installs and tests the application on exactly PHP 8.4.1 in a disposable container. Install SQLite PDO, Composer 2.8 or newer, Node 22.18 or newer in the 22.x series, and npm. The lockfiles select Laravel 13.35, Fortify 1.41, Inertia Laravel 3.5, Pest 5.3, and Vite 8. Use `composer show --direct` and `npm ls --depth=0` for the exact installed versions on your machine. PostgreSQL, `pdo_pgsql`, `pcntl`, and `posix` are needed to run the concurrency suite locally.
 
 ```bash
 composer install --no-interaction --prefer-dist
@@ -19,7 +19,7 @@ npm run build
 composer run dev
 ```
 
-Configure `DB_CONNECTION` and its credentials in `.env` before migrating. The default local SQLite database can be created with `touch database/database.sqlite` if it is absent. `composer setup` is an alternative first-install script, uses `npm ci`, and runs key generation and migrations without interactive prompts. Do not point test or migration commands that reset schema at a database containing user data.
+Configure `DB_CONNECTION` and its credentials in `.env` before migrating. The default local SQLite database can be created with `touch database/database.sqlite` if it is absent. `composer setup` bootstraps local development, uses `npm ci`, and runs migrations without interactive prompts. It creates `.env` only when absent and generates an application key only when none is configured, preserving the existing `APP_KEY` on rerun. CI verifies two setup runs in a disposable environment. Do not use `composer setup` as a deployment command. Do not point test or migration commands that reset schema at a database containing user data.
 
 Installation and standard seeding create no predefined credentials. For a disposable local demonstration only, explicitly run:
 
@@ -60,7 +60,7 @@ php artisan route:list
 php artisan test --compact --testsuite=Concurrency
 ```
 
-`composer test` includes Pint, PHPStan, and the PHP suite. `composer ci:check` adds frontend formatting/lint, an npm security audit at the high severity threshold, frontend type checking, and architecture checks. `composer coverage` enforces the repository's exact line and branch coverage gate; disable Composer's process timeout for this long-running command. CI runs coverage on demand through `workflow_dispatch`, not on every pull request. The workflow must be present on GitHub's default branch before manual dispatch is available; run the local gate before the initial integration and the manual CI gate before publication. The PostgreSQL concurrency suite requires a disposable PostgreSQL database, `pdo_pgsql`, `pcntl`, and `posix`; CI provisions PostgreSQL 16. A skipped concurrency test under SQLite is not evidence of a PostgreSQL pass.
+`composer test` includes Pint, PHPStan, and the PHP suite. `composer ci:check` adds frontend formatting/lint, an npm security audit at the high severity threshold, a locked Composer dependency audit, frontend type checking, and architecture checks. The PHP audit uses `composer audit --locked --abandoned=fail`: vulnerabilities and abandoned packages fail the gate. Replace or remove abandoned packages; any temporary exception must be reviewed with a reason and removal plan instead of disabling the audit. See the [Composer audit options](https://getcomposer.org/doc/03-cli.md#audit). `composer coverage` enforces the repository's exact line and branch coverage gate; disable Composer's process timeout for this long-running command. CI runs coverage on demand through `workflow_dispatch`, not on every pull request. The workflow must be present on GitHub's default branch before manual dispatch is available; run the local gate before the initial integration and the manual CI gate before publication. The PostgreSQL concurrency suite requires a disposable PostgreSQL database, `pdo_pgsql`, `pcntl`, and `posix`; CI provisions PostgreSQL 16. A skipped concurrency test under SQLite is not evidence of a PostgreSQL pass.
 
 After changing routes or controller names, run `php artisan wayfinder:generate --no-interaction` and `npm run build`. Do not edit generated Wayfinder files by hand. For a new module, follow the contract and testing steps in [ARCHITECTURE.md](ARCHITECTURE.md).
 
