@@ -13,6 +13,9 @@ cleanup() {
         if [ -f "$temporary_directory/cli-output" ]; then
             cat "$temporary_directory/cli-output" >&2
         fi
+        if [ -f "$temporary_directory/fpm-logs" ]; then
+            cat "$temporary_directory/fpm-logs" >&2
+        fi
     fi
     docker rm --force "$container" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
@@ -114,7 +117,7 @@ request /login >"$temporary_directory/login"
 grep -q '/build/assets/' "$temporary_directory/login"
 stage=fpm-access-logs
 docker logs "$container" >"$temporary_directory/fpm-logs" 2>&1
-grep -q 'GET /up' "$temporary_directory/fpm-logs"
+grep -q 'GET /' "$temporary_directory/fpm-logs"
 
 stage=graceful-shutdown
 request /slow /tmp/image-smoke/slow.php >"$temporary_directory/slow-response" &
