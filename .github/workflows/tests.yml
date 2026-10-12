@@ -182,3 +182,72 @@ jobs:
 
       - name: Run PostgreSQL concurrency tests
         run: php artisan test --compact --testsuite=Concurrency
+
+  sail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Sail from the existing lockfile
+        run: |
+          composer install --no-interaction --prefer-dist
+          cp .env.sail.example .env
+          php artisan app:ensure-key --no-interaction
+          echo "WWWUSER=$(id -u)" >> "$GITHUB_ENV"
+          echo "WWWGROUP=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Validate and start the development environment
+        run: |
+          docker compose config --quiet
+          ./vendor/bin/sail build
+          ./vendor/bin/sail up --detach --wait --wait-timeout 120
+
+      - name: Verify versions and available tooling
+        run: |
+          ./vendor/bin/sail php -r 'exit(PHP_VERSION_ID >= 80401 && PHP_VERSION_ID < 80500 ? 0 : 1);'
+          ./vendor/bin/sail composer check-platform-reqs
+          ./vendor/bin/sail node --version | grep '^v22\.'
+          ./vendor/bin/sail npm --version
+          ./vendor/bin/sail artisan list --no-interaction
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SHOW server_version_num' | cut -c1-2)" = 16
+
+      - name: Verify explicit setup preserves keys and database records
+        run: |
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc "SELECT to_regclass('public.migrations') IS NULL")" = t
+          ./vendor/bin/sail composer setup
+          environment_before="$(sha256sum .env)"
+          docker compose exec -T pgsql psql -U sail -d laravel -v ON_ERROR_STOP=1 -c "CREATE TABLE sail_persistence_probe (id integer PRIMARY KEY); INSERT INTO sail_persistence_probe VALUES (42)"
+          ./vendor/bin/sail composer setup
+          test "$environment_before" = "$(sha256sum .env)"
+          ./vendor/bin/sail stop
+          ./vendor/bin/sail up --detach --wait --wait-timeout 120
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
+          curl --fail --retry 10 --retry-connrefused --retry-delay 2 http://localhost:8000/up
+          curl --fail http://localhost:8000/login > /dev/null
+
+      - name: Verify application contracts in Sail
+        run: |
+          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/SetupKeyTest.php
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
+
+      - name: Show container diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color
+
+      - name: Stop disposable CI containers
+        if: always()
+        run: docker compose down
