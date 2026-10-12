@@ -16,6 +16,10 @@ cleanup() {
         if [ -f "$temporary_directory/fpm-logs" ]; then
             cat "$temporary_directory/fpm-logs" >&2
         fi
+        if [ -f "$temporary_directory/slow-response" ]; then
+            cat "$temporary_directory/slow-response" >&2
+            docker logs "$container" >&2 2>/dev/null || true
+        fi
     fi
     docker rm --force "$container" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
@@ -78,7 +82,10 @@ grep -q production-image-log-smoke "$temporary_directory/cli-output"
 cat >"$temporary_directory/slow.php" <<'PHP'
 <?php
 file_put_contents('/tmp/smoke-request-started', 'started');
-usleep(2000000);
+$deadline = hrtime(true) + 2000000000;
+while (hrtime(true) < $deadline) {
+    usleep(10000);
+}
 echo 'graceful-request-complete';
 PHP
 chmod 0755 "$temporary_directory"
@@ -129,7 +136,9 @@ for attempt in $(seq 1 40); do
     sleep 0.1
 done
 docker exec "$container" test -f /tmp/smoke-request-started
+stage=graceful-stop
 docker stop --time 10 "$container" >/dev/null
+stage=graceful-response
 wait "$request_pid"
 grep -q graceful-request-complete "$temporary_directory/slow-response"
 test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" = 0
