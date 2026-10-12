@@ -33,7 +33,7 @@
         "@types/node": "^22.13.5",
         "@vitejs/plugin-vue": "^6.0.0",
         "concurrently": "^10.0.3",
-        "typescript": "^5.2.2",
+        "typescript": "^7.0.2",
         "vite": "^8.0.0",
         "vite-plus": "0.3.0",
         "vue-tsc": "^2.2.4"
