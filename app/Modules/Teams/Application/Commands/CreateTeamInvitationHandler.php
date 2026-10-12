@@ -23,9 +23,11 @@ class CreateTeamInvitationHandler
     {
         $invitation = $this->transactions->run(function () use ($command): TeamInvitationData {
             $state = $this->invitations->creationForUpdate($command->teamId, $command->inviterId, $command->email);
-            $this->policy->assertCanCreate($state->inviterRole, $command->role, $state->recipientIsMember, $state->pendingExpiresAt, $this->clock->now());
+            $now = $this->clock->now();
+            $this->policy->assertCanCreate($state->inviterRole, $command->role, $state->recipientIsMember, $state->pendingExpiresAt, $now);
 
-            return $this->invitations->create($command->teamId, $command->inviterId, $command->email, $command->role, $state->inviterName);
+            return $this->invitations->create($command->teamId, $command->inviterId, $command->email, $command->role,
+                $state->inviterName, $this->policy->expiresAt($now));
         });
 
         $this->sender->send($invitation);

@@ -12,6 +12,7 @@ use App\Modules\Teams\Application\Data\TeamPermissionsData;
 use App\Modules\Teams\Domain\Enums\TeamPermission;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
+use App\Modules\Teams\Domain\Policies\TeamLifecyclePolicy;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class EloquentTeamQueries implements TeamQueries
 {
-    public function __construct(private TeamClock $clock, private UserDirectory $users) {}
+    public function __construct(private TeamClock $clock, private UserDirectory $users, private TeamLifecyclePolicy $lifecycle) {}
 
     public function forUser(int $userId, bool $includeCurrent = false): array
     {
@@ -67,12 +68,12 @@ class EloquentTeamQueries implements TeamQueries
     public function permissionsFor(int $userId, int $teamId): TeamPermissionsData
     {
         $this->ensureUserExists($userId);
-        Team::query()->findOrFail($teamId);
+        $team = Team::query()->findOrFail($teamId);
         $role = $this->roleFor($userId, $teamId);
 
         return new TeamPermissionsData(
             canUpdateTeam: $role?->hasPermission(TeamPermission::UpdateTeam) ?? false,
-            canDeleteTeam: $role?->hasPermission(TeamPermission::DeleteTeam) ?? false,
+            canDeleteTeam: $this->lifecycle->canDelete($team->is_personal, $role),
             canAddMember: $role?->hasPermission(TeamPermission::AddMember) ?? false,
             canUpdateMember: $role?->hasPermission(TeamPermission::UpdateMember) ?? false,
             canRemoveMember: $role?->hasPermission(TeamPermission::RemoveMember) ?? false,
@@ -121,12 +122,17 @@ class EloquentTeamQueries implements TeamQueries
 
     public function pendingInvitationsForEmail(string $email): array
     {
-        return array_values(TeamInvitation::query()->with('team')
+        $invitations = TeamInvitation::query()->with('team')
             ->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
             ->whereNull('accepted_at')
             ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', $this->clock->now()))
-            ->latest()->get()
-            ->map(fn (TeamInvitation $invitation): PendingTeamInvitationData => $this->pendingInvitationData($invitation))
+            ->latest()->get();
+        $inviters = $invitations->isEmpty() ? [] : $this->users->findMany($invitations->pluck('invited_by')->all());
+
+        return array_values($invitations
+            ->map(fn (TeamInvitation $invitation): PendingTeamInvitationData => $this->pendingInvitationData(
+                $invitation, isset($inviters[$invitation->invited_by]) ? $inviters[$invitation->invited_by]->name : null,
+            ))
             ->all());
     }
 
@@ -137,7 +143,8 @@ class EloquentTeamQueries implements TeamQueries
             ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', $this->clock->now()))
             ->first();
 
-        return $invitation === null ? null : $this->pendingInvitationData($invitation);
+        return $invitation === null ? null : $this->pendingInvitationData($invitation,
+            $this->users->find($invitation->invited_by)?->name);
     }
 
     public function belongsToTeam(int $userId, int $teamId): bool
@@ -166,10 +173,10 @@ class EloquentTeamQueries implements TeamQueries
             $this->roleFor($userId, $team->id), $currentTeamId === $team->id);
     }
 
-    private function pendingInvitationData(TeamInvitation $invitation): PendingTeamInvitationData
+    private function pendingInvitationData(TeamInvitation $invitation, ?string $inviterName): PendingTeamInvitationData
     {
         return new PendingTeamInvitationData($invitation->code, $invitation->team->name, $invitation->team->slug,
-            $this->users->find($invitation->invited_by)?->name);
+            $inviterName);
     }
 
     private function ensureUserExists(int $userId): void

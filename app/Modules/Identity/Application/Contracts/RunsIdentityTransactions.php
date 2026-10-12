@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Modules\Profile\Application\Contracts;
+namespace App\Modules\Identity\Application\Contracts;
 
 use Closure;
 
-interface RunsProfileTransactions
+interface RunsIdentityTransactions
 {
     /**
      * @template T

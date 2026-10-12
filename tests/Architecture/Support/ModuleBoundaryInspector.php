@@ -92,8 +92,10 @@ final class ModuleBoundaryInspector
                 foreach ($this->dependencies($file) as $dependency) {
                     $framework = preg_match('/^(Illuminate|Laravel|Inertia|Symfony\\\\Component\\\\HttpFoundation|Psr\\\\Container)\\\\/', $dependency) === 1;
                     $globalApp = str_starts_with($dependency, 'App\\')
-                        && ! str_starts_with($dependency, 'App\\Modules\\');
+                        && ! str_starts_with($dependency, 'App\\Modules\\')
+                        && ! str_starts_with($dependency, 'App\\Shared\\Domain\\');
                     $domainOutside = $isDomain && str_starts_with($dependency, 'App\\Modules\\')
+                        && $dependency !== "App\\Modules\\$module\\Domain"
                         && ! str_starts_with($dependency, "App\\Modules\\$module\\Domain\\");
                     $internal = str_starts_with($dependency, "App\\Modules\\$module\\Infrastructure\\")
                         || str_starts_with($dependency, "App\\Modules\\$module\\Presentation\\");
@@ -102,6 +104,20 @@ final class ModuleBoundaryInspector
                     if ($framework || $globalApp || $domainOutside || $internal || $domainToApplication) {
                         $violations[] = "$relative uses $dependency";
                     }
+                }
+            }
+        }
+
+        foreach ($this->phpFiles($this->root.'/app/Shared/Domain') as $file) {
+            $relative = $this->relative($file);
+
+            foreach ($this->dependencies($file) as $dependency) {
+                if (preg_match('/^(Illuminate|Laravel|Inertia|Symfony\\\\Component\\\\HttpFoundation|Psr\\\\Container)\\\\/', $dependency) === 1
+                    || str_starts_with($dependency, 'App\\Modules\\')
+                    || (str_starts_with($dependency, 'App\\')
+                        && $dependency !== 'App\\Shared\\Domain'
+                        && ! str_starts_with($dependency, 'App\\Shared\\Domain\\'))) {
+                    $violations[] = "$relative uses $dependency";
                 }
             }
         }
@@ -173,6 +189,7 @@ final class ModuleBoundaryInspector
     public function globalHelperViolations(): array
     {
         $violations = [];
+        $filesToCheck = $this->phpFiles($this->root.'/app/Shared/Domain');
         $frameworkHelpers = [
             '__', 'app', 'auth', 'cache', 'collect', 'config', 'dispatch', 'env',
             'event', 'now', 'redirect', 'request', 'resolve', 'route', 'session', 'trans', 'url',
@@ -187,10 +204,16 @@ final class ModuleBoundaryInspector
                     continue;
                 }
 
-                foreach ((new NodeFinder)->findInstanceOf($this->nodes($file), Node\Expr\FuncCall::class) as $call) {
-                    if ($call->name instanceof Name && in_array($call->name->toString(), $frameworkHelpers, true)) {
-                        $violations[] = "$relative calls framework helper ".$call->name->toString();
-                    }
+                $filesToCheck[] = $file;
+            }
+        }
+
+        foreach ($filesToCheck as $file) {
+            $relative = $this->relative($file);
+
+            foreach ((new NodeFinder)->findInstanceOf($this->nodes($file), Node\Expr\FuncCall::class) as $call) {
+                if ($call->name instanceof Name && in_array($call->name->toString(), $frameworkHelpers, true)) {
+                    $violations[] = "$relative calls framework helper ".$call->name->toString();
                 }
             }
         }
@@ -253,7 +276,8 @@ final class ModuleBoundaryInspector
             foreach ($files as $file) {
                 $relative = $this->relative($file);
 
-                if (! str_contains($relative, "/$module/Application/Data/")
+                if (! str_contains($relative, "/$module/Application/Api/")
+                    && ! str_contains($relative, "/$module/Application/Data/")
                     && ! str_contains($relative, "/$module/Application/Commands/")) {
                     continue;
                 }
@@ -261,7 +285,7 @@ final class ModuleBoundaryInspector
                 foreach ((new NodeFinder)->findInstanceOf($this->nodes($file), Class_::class) as $class) {
                     $isCommand = str_contains($relative, '/Commands/') && ! str_ends_with($class->name?->toString() ?? '', 'Handler');
 
-                    if (($isCommand || str_contains($relative, '/Data/')) && ! $class->isReadonly()) {
+                    if (($isCommand || str_contains($relative, '/Data/') || str_contains($relative, '/Api/')) && ! $class->isReadonly()) {
                         $violations[] = "$relative must declare a readonly value class";
                     }
                 }

@@ -1,6 +1,6 @@
 <?php
 
-use App\Modules\Profile\Domain\Policies\EmailVerificationPolicy;
+use App\Modules\Identity\Domain\Policies\EmailVerificationPolicy;
 
 test('changing the email invalidates verification without Laravel boot', function () {
     $policy = new EmailVerificationPolicy;

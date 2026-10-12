@@ -6,12 +6,13 @@ use App\Modules\Teams\Application\Data\InvitationCreationData;
 use App\Modules\Teams\Application\Data\InvitationResponseData;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
+use DateTimeImmutable;
 
 interface ManagesTeamInvitations
 {
     public function creationForUpdate(int $teamId, int $inviterId, string $email): InvitationCreationData;
 
-    public function create(int $teamId, int $inviterId, string $email, TeamRole $role, string $inviterName): TeamInvitationData;
+    public function create(int $teamId, int $inviterId, string $email, TeamRole $role, string $inviterName, DateTimeImmutable $expiresAt): TeamInvitationData;
 
     public function cancellationRoleForUpdate(int $teamId, int $actorId, int $invitationId): ?TeamRole;
 
@@ -19,9 +20,9 @@ interface ManagesTeamInvitations
 
     public function responseForUpdate(int $userId, int $invitationId): InvitationResponseData;
 
-    public function accept(InvitationResponseData $invitation): string;
+    public function accept(InvitationResponseData $invitation, DateTimeImmutable $acceptedAt): void;
 
     public function decline(int $invitationId): void;
 
-    public function pruneExpired(): void;
+    public function pruneExpired(DateTimeImmutable $now): void;
 }

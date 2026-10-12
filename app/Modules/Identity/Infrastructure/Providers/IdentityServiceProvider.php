@@ -7,8 +7,12 @@ use App\Modules\Identity\Application\Api\ProfileAccounts;
 use App\Modules\Identity\Application\Api\SecurityAccounts;
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
 use App\Modules\Identity\Application\Api\UserDirectory;
+use App\Modules\Identity\Application\Contracts\RunsIdentityTransactions;
+use App\Modules\Identity\Application\Contracts\StoresProfileAccounts;
+use App\Modules\Identity\Application\Services\OwnProfileAccounts;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\EloquentAccountCredentials;
-use App\Modules\Identity\Infrastructure\Persistence\Eloquent\EloquentProfileAccounts;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\EloquentIdentityTransaction;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\EloquentProfileAccountStore;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\EloquentTeamSelectionAccounts;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Queries\EloquentSecurityAccounts;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Queries\EloquentUserDirectory;
@@ -22,7 +26,9 @@ class IdentityServiceProvider extends ServiceProvider
     {
         $this->app->bind(UserDirectory::class, EloquentUserDirectory::class);
         $this->app->bind(TeamSelectionAccounts::class, EloquentTeamSelectionAccounts::class);
-        $this->app->bind(ProfileAccounts::class, EloquentProfileAccounts::class);
+        $this->app->bind(ProfileAccounts::class, OwnProfileAccounts::class);
+        $this->app->bind(StoresProfileAccounts::class, EloquentProfileAccountStore::class);
+        $this->app->bind(RunsIdentityTransactions::class, EloquentIdentityTransaction::class);
         $this->app->bind(AccountCredentials::class, EloquentAccountCredentials::class);
         $this->app->bind(SecurityAccounts::class, EloquentSecurityAccounts::class);
     }

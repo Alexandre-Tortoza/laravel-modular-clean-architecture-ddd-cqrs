@@ -8,6 +8,16 @@ use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 
 class TeamLifecyclePolicy
 {
+    public function canLeave(bool $isPersonal, ?TeamRole $role): bool
+    {
+        return ! $isPersonal && $role !== null && $role !== TeamRole::Owner;
+    }
+
+    public function canDelete(bool $isPersonal, ?TeamRole $role): bool
+    {
+        return ! $isPersonal && $role === TeamRole::Owner;
+    }
+
     public function assertMembership(?TeamRole $role): void
     {
         if ($role === null) {
@@ -30,7 +40,7 @@ class TeamLifecyclePolicy
 
         $this->assertMembership($role);
 
-        if ($role === TeamRole::Owner) {
+        if (! $this->canLeave($isPersonal, $role)) {
             throw new TeamOperationRejected('Team owners cannot leave their team.');
         }
     }
@@ -41,7 +51,7 @@ class TeamLifecyclePolicy
             throw new TeamOperationRejected('Personal teams cannot be deleted.');
         }
 
-        if ($role !== TeamRole::Owner) {
+        if (! $this->canDelete($isPersonal, $role)) {
             throw new TeamOperationRejected('Only team owners can delete a team.');
         }
     }

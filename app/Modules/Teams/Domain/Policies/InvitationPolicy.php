@@ -11,6 +11,11 @@ use DateTimeImmutable;
 
 class InvitationPolicy
 {
+    public function expiresAt(DateTimeImmutable $now): DateTimeImmutable
+    {
+        return $now->modify('+3 days');
+    }
+
     /** @param list<?DateTimeImmutable> $pendingExpiresAt */
     public function assertCanCreate(?TeamRole $inviterRole, TeamRole $requestedRole, bool $recipientIsMember, array $pendingExpiresAt, DateTimeImmutable $now): void
     {

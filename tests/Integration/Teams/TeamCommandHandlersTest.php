@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
+use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitation;
 use App\Modules\Teams\Application\Commands\AcceptTeamInvitationHandler;
@@ -35,6 +36,44 @@ test('creating a team selects it without changing URL defaults in the write laye
 
     expect($user->fresh()->current_team_id)->toBe($createdTeam->id)
         ->and(URL::getDefaultParameters()['current_team'])->toBe($previousTeamSlug);
+});
+
+test('leaving the only selected shared team clears the selection without a personal team', function () {
+    $owner = User::factory()->create();
+    $member = User::factory()->create();
+    $team = app(CreateTeamHandler::class)->handle(new CreateTeam($owner->id, 'Only Team'));
+    Team::query()->findOrFail($team->id)->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
+    DB::transaction(fn () => app(TeamSelectionAccounts::class)->select($member->id, $team->id));
+
+    app(LeaveTeamHandler::class)->handle(new LeaveTeam($member->id, $team->id));
+
+    expect($member->fresh()->current_team_id)->toBeNull()
+        ->and(app(TeamContext::class)->belongsToTeam($member->id, $team->id))->toBeFalse();
+});
+
+test('deleting the only selected shared team clears the owner selection', function () {
+    $owner = User::factory()->create();
+    $team = app(CreateTeamHandler::class)->handle(new CreateTeam($owner->id, 'Only Team'));
+
+    app(DeleteTeamHandler::class)->handle(new DeleteTeam($owner->id, $team->id));
+
+    expect($owner->fresh()->current_team_id)->toBeNull();
+    $this->assertSoftDeleted('teams', ['id' => $team->id]);
+});
+
+test('leaving another team preserves the selected team', function () {
+    $firstOwner = User::factory()->create();
+    $secondOwner = User::factory()->create();
+    $member = User::factory()->create();
+    $firstTeam = app(CreateTeamHandler::class)->handle(new CreateTeam($firstOwner->id, 'First Team'));
+    $secondTeam = app(CreateTeamHandler::class)->handle(new CreateTeam($secondOwner->id, 'Second Team'));
+    Team::query()->findOrFail($firstTeam->id)->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
+    Team::query()->findOrFail($secondTeam->id)->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
+    DB::transaction(fn () => app(TeamSelectionAccounts::class)->select($member->id, $secondTeam->id));
+
+    app(LeaveTeamHandler::class)->handle(new LeaveTeam($member->id, $firstTeam->id));
+
+    expect($member->fresh()->current_team_id)->toBe($secondTeam->id);
 });
 
 test('accept handler rejects invitations sent to another email address', function () {

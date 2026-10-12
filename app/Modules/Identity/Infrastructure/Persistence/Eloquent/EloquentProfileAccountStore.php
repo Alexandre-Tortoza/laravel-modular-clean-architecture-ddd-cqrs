@@ -2,23 +2,22 @@
 
 namespace App\Modules\Identity\Infrastructure\Persistence\Eloquent;
 
-use App\Modules\Identity\Application\Api\ProfileAccounts;
-use App\Modules\Identity\Application\Api\ProfileAccountSnapshot;
+use App\Modules\Identity\Application\Contracts\StoresProfileAccounts;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
-class EloquentProfileAccounts implements ProfileAccounts
+class EloquentProfileAccountStore implements StoresProfileAccounts
 {
-    public function lockOwnProfile(int $actorId): ProfileAccountSnapshot
+    public function emailForUpdate(int $actorId): string
     {
         $this->requireTransaction();
         $user = User::query()->lockForUpdate()->findOrFail($actorId);
 
-        return new ProfileAccountSnapshot($user->id, $user->email);
+        return $user->email;
     }
 
-    public function saveOwnProfile(int $actorId, string $name, string $email, bool $invalidateEmailVerification): void
+    public function save(int $actorId, string $name, string $email, bool $invalidateEmailVerification): void
     {
         $this->requireTransaction();
         $attributes = ['name' => $name, 'email' => $email];
@@ -30,7 +29,7 @@ class EloquentProfileAccounts implements ProfileAccounts
         User::query()->whereKey($actorId)->update($attributes);
     }
 
-    public function deleteOwnProfile(int $actorId): void
+    public function delete(int $actorId): void
     {
         User::query()->findOrFail($actorId)->delete();
     }

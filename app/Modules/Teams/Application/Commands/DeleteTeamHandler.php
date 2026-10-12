@@ -25,7 +25,7 @@ class DeleteTeamHandler
 
             $this->teams->deleteTeam($command->teamId);
 
-            if ($fallbackTeamId !== null) {
+            if ($deletion->actor->currentTeamId === $deletion->teamId) {
                 $this->teams->setCurrentTeam($command->userId, $fallbackTeamId);
             }
         });

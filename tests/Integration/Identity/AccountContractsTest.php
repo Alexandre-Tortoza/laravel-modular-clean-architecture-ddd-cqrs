@@ -6,21 +6,39 @@ use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
-test('profile account integration locks and saves only the actor within the caller transaction', function () {
-    $actor = User::factory()->create();
+test('profile account operation protects verification without a caller-managed transaction', function () {
+    $actor = User::factory()->create(['email' => 'before@example.com', 'email_verified_at' => now()]);
     $other = User::factory()->create();
 
-    $snapshot = DB::transaction(function () use ($actor) {
-        $accounts = app(ProfileAccounts::class);
-        $snapshot = $accounts->lockOwnProfile($actor->id);
-        $accounts->saveOwnProfile($actor->id, 'Changed', 'changed@example.com', true);
+    app(ProfileAccounts::class)->updateOwnProfile($actor->id, 'Changed', 'changed@example.com');
 
-        return $snapshot;
-    });
-
-    expect($snapshot->email)->toBe($actor->email)
+    expect($actor->fresh()->name)->toBe('Changed')
         ->and($actor->fresh()->email_verified_at)->toBeNull()
         ->and($other->fresh()->email)->toBe($other->email);
+});
+
+test('profile account operation preserves verification for an unchanged email', function () {
+    $actor = User::factory()->create(['email' => 'same@example.com', 'email_verified_at' => now()]);
+
+    app(ProfileAccounts::class)->updateOwnProfile($actor->id, 'Changed', 'same@example.com');
+
+    expect($actor->fresh()->email_verified_at)->not->toBeNull();
+});
+
+test('profile account operation joins an enclosing transaction', function () {
+    $actor = User::factory()->create(['email' => 'before@example.com', 'email_verified_at' => now()]);
+
+    try {
+        DB::transaction(function () use ($actor): void {
+            app(ProfileAccounts::class)->updateOwnProfile($actor->id, 'Changed', 'changed@example.com');
+            throw new RuntimeException('abort');
+        });
+    } catch (RuntimeException $exception) {
+        expect($exception->getMessage())->toBe('abort');
+    }
+
+    expect($actor->fresh()->email)->toBe('before@example.com')
+        ->and($actor->fresh()->email_verified_at)->not->toBeNull();
 });
 
 test('credential operation changes only the actor password', function () {

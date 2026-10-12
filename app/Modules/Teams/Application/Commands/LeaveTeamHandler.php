@@ -20,7 +20,7 @@ class LeaveTeamHandler
                 : null;
             $this->teams->detachMember($command->teamId, $command->userId);
 
-            if ($fallbackTeamId !== null) {
+            if ($membership->currentTeamId === $membership->teamId) {
                 $this->teams->setCurrentTeam($command->userId, $fallbackTeamId);
             }
         });

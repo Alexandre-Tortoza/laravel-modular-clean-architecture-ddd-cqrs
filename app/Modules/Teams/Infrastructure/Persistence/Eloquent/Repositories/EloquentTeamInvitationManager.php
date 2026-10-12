@@ -5,7 +5,6 @@ namespace App\Modules\Teams\Infrastructure\Persistence\Eloquent\Repositories;
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
 use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Teams\Application\Contracts\ManagesTeamInvitations;
-use App\Modules\Teams\Application\Contracts\TeamClock;
 use App\Modules\Teams\Application\Data\InvitationCreationData;
 use App\Modules\Teams\Application\Data\InvitationResponseData;
 use App\Modules\Teams\Application\Data\TeamInvitationData;
@@ -13,10 +12,11 @@ use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Membership;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
+use DateTimeImmutable;
 
 class EloquentTeamInvitationManager implements ManagesTeamInvitations
 {
-    public function __construct(private TeamClock $clock, private UserDirectory $users, private TeamSelectionAccounts $selection) {}
+    public function __construct(private UserDirectory $users, private TeamSelectionAccounts $selection) {}
 
     public function creationForUpdate(int $teamId, int $inviterId, string $email): InvitationCreationData
     {
@@ -36,12 +36,12 @@ class EloquentTeamInvitationManager implements ManagesTeamInvitations
         return new InvitationCreationData($inviterRole, $lockedUsers[$inviterId]->name, $recipientIsMember, $pendingExpiresAt);
     }
 
-    public function create(int $teamId, int $inviterId, string $email, TeamRole $role, string $inviterName): TeamInvitationData
+    public function create(int $teamId, int $inviterId, string $email, TeamRole $role, string $inviterName, DateTimeImmutable $expiresAt): TeamInvitationData
     {
         $team = Team::query()->findOrFail($teamId);
         $invitation = $team->invitations()->create([
             'email' => $email, 'role' => $role, 'invited_by' => $inviterId,
-            'expires_at' => $this->clock->now()->modify('+3 days'),
+            'expires_at' => $expiresAt,
         ]);
 
         return new TeamInvitationData($invitation->id, $invitation->code, $invitation->email,
@@ -74,14 +74,11 @@ class EloquentTeamInvitationManager implements ManagesTeamInvitations
             $invitation->expires_at?->toDateTimeImmutable(), $invitation->accepted_at?->toDateTimeImmutable());
     }
 
-    public function accept(InvitationResponseData $invitation): string
+    public function accept(InvitationResponseData $invitation, DateTimeImmutable $acceptedAt): void
     {
         Team::query()->findOrFail($invitation->teamId)->memberships()->firstOrCreate(
             ['user_id' => $invitation->userId], ['role' => $invitation->role]);
-        TeamInvitation::query()->findOrFail($invitation->invitationId)->update(['accepted_at' => $this->clock->now()]);
-        $this->selection->select($invitation->userId, $invitation->teamId);
-
-        return $invitation->teamSlug;
+        TeamInvitation::query()->findOrFail($invitation->invitationId)->update(['accepted_at' => $acceptedAt]);
     }
 
     public function decline(int $invitationId): void
@@ -89,8 +86,8 @@ class EloquentTeamInvitationManager implements ManagesTeamInvitations
         TeamInvitation::query()->findOrFail($invitationId)->delete();
     }
 
-    public function pruneExpired(): void
+    public function pruneExpired(DateTimeImmutable $now): void
     {
-        TeamInvitation::query()->whereNotNull('expires_at')->where('expires_at', '<=', $this->clock->now())->delete();
+        TeamInvitation::query()->whereNotNull('expires_at')->where('expires_at', '<=', $now)->delete();
     }
 }

@@ -38,6 +38,12 @@ it('accepts a new invitation when earlier invitations expired at the current ins
         ->toThrow(TeamInvitationCreationRejected::class);
 });
 
+it('sets invitation expiry three days after the supplied instant without Laravel boot', function (): void {
+    $now = new DateTimeImmutable('2026-01-04 12:00:00');
+
+    expect((new InvitationPolicy)->expiresAt($now))->toEqual(new DateTimeImmutable('2026-01-07 12:00:00'));
+});
+
 it('protects owner roles and personal teams without Laravel boot', function (): void {
     $policy = new TeamLifecyclePolicy;
 

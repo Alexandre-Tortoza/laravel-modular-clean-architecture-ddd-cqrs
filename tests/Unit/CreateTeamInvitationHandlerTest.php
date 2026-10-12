@@ -24,7 +24,9 @@ it('does not notify when the invitation transaction rolls back', function (): vo
     $invitations = Mockery::mock(ManagesTeamInvitations::class);
     $invitations->shouldReceive('creationForUpdate')->once()->with(7, 3, 'recipient@example.com')
         ->andReturn(new InvitationCreationData(TeamRole::Owner, 'Taylor', false, []));
-    $invitations->shouldReceive('create')->once()->with(7, 3, 'recipient@example.com', TeamRole::Member, 'Taylor')
+    $invitations->shouldReceive('create')->once()->with(7, 3, 'recipient@example.com', TeamRole::Member, 'Taylor', Mockery::on(
+        fn (DateTimeImmutable $expiresAt): bool => $expiresAt == new DateTimeImmutable('2026-01-07 12:00:00'),
+    ))
         ->andReturn(new TeamInvitationData(9, 'code', 'recipient@example.com', 7, 'Acme', 'Taylor', TeamRole::Member));
     $sender = Mockery::mock(SendsTeamInvitations::class);
     $sender->shouldNotReceive('send');

@@ -4,12 +4,13 @@ namespace App\Modules\Teams\Presentation\Policies;
 
 use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Domain\Enums\TeamPermission;
+use App\Modules\Teams\Domain\Policies\TeamLifecyclePolicy;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 class TeamPolicy
 {
-    public function __construct(private TeamContext $teams) {}
+    public function __construct(private TeamContext $teams, private TeamLifecyclePolicy $lifecycle) {}
 
     public function viewAny(Authenticatable $user): bool
     {
@@ -33,10 +34,8 @@ class TeamPolicy
 
     public function leave(Authenticatable $user, Team $team): bool
     {
-        $userId = (int) $user->getAuthIdentifier();
-
-        return ! $team->is_personal && $this->teams->belongsToTeam($userId, $team->id)
-            && ! $this->teams->ownsTeam($userId, $team->id);
+        return $this->lifecycle->canLeave($team->is_personal,
+            $this->teams->roleFor((int) $user->getAuthIdentifier(), $team->id));
     }
 
     public function addMember(Authenticatable $user, Team $team): bool
@@ -66,6 +65,7 @@ class TeamPolicy
 
     public function delete(Authenticatable $user, Team $team): bool
     {
-        return ! $team->is_personal && $this->teams->hasPermission((int) $user->getAuthIdentifier(), $team->id, TeamPermission::DeleteTeam);
+        return $this->lifecycle->canDelete($team->is_personal,
+            $this->teams->roleFor((int) $user->getAuthIdentifier(), $team->id));
     }
 }

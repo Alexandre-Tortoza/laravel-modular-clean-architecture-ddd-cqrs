@@ -3,6 +3,7 @@
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
 use App\Modules\Identity\Application\Api\UserDirectory;
 use App\Modules\Identity\Infrastructure\Persistence\Eloquent\Models\User;
+use App\Modules\Teams\Application\Api\TeamContext;
 use App\Modules\Teams\Application\Contracts\TeamQueries;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
@@ -10,6 +11,7 @@ use App\Modules\Teams\Domain\Exceptions\TeamOperationRejected;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\Team;
 use App\Modules\Teams\Infrastructure\Persistence\Eloquent\Models\TeamInvitation;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\UserWithPersonalTeam;
 
 test('returns a user team projection without exposing an Eloquent model', function () {
@@ -26,6 +28,44 @@ test('returns a user team projection without exposing an Eloquent model', functi
         ->and($productTeam)->not->toBeNull()
         ->and($productTeam->role)->toBe(TeamRole::Admin)
         ->and($productTeam)->not->toBeInstanceOf(Team::class);
+});
+
+test('team context reports ownership only for the owner', function () {
+    $owner = User::factory()->create();
+    $member = User::factory()->create();
+    $team = Team::factory()->create();
+    $team->memberships()->create(['user_id' => $owner->id, 'role' => TeamRole::Owner]);
+    $team->memberships()->create(['user_id' => $member->id, 'role' => TeamRole::Member]);
+
+    $context = app(TeamContext::class);
+
+    expect($context->ownsTeam($owner->id, $team->id))->toBeTrue()
+        ->and($context->ownsTeam($member->id, $team->id))->toBeFalse();
+});
+
+test('pending invitation authors are fetched in one Identity query', function () {
+    $recipient = User::factory()->create(['email' => 'recipient@example.com']);
+    $team = Team::factory()->create();
+    $inviters = User::factory()->count(3)->create();
+
+    foreach ($inviters as $inviter) {
+        TeamInvitation::factory()->create([
+            'team_id' => $team->id,
+            'email' => $recipient->email,
+            'invited_by' => $inviter->id,
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $invitations = app(TeamQueries::class)->pendingInvitationsForEmail($recipient->email);
+    $userQueries = collect(DB::getQueryLog())
+        ->filter(fn (array $query): bool => str_contains($query['query'], 'from "users"'));
+
+    expect($invitations)->toHaveCount(3)
+        ->and(collect($invitations)->pluck('inviterName')->sort()->values()->all())
+        ->toBe($inviters->pluck('name')->sort()->values()->all())
+        ->and($userQueries)->toHaveCount(1);
 });
 
 test('returns current team permissions and pending invitation projections', function () {

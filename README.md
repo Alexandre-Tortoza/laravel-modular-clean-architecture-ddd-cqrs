@@ -32,7 +32,7 @@ Fortify provides login, logout, password reset, email verification, two-factor a
 | Security | Password-change use case and security settings HTTP routes                                                      | No cross-module API; calls Identity `AccountCredentials` and `SecurityAccounts`                                                         |
 | Teams    | `teams`, `team_members`, `team_invitations`, team rules and use cases, notifications                            | `TeamContext` for read-only context; `TeamQueries` is an internal read port                                                             |
 
-The module tree is `app/Modules/<Module>/{Domain,Application,Infrastructure,Presentation}` with `routes/` where a module owns routes. `Application/Api` contains exports; `Application/Contracts` contains internal persistence and effect ports. The classes in `Application` are not all public. See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership, allowed dependencies, transaction boundaries, and a complete invitation flow.
+The module tree is `app/Modules/<Module>/{Domain,Application,Infrastructure,Presentation}` with `routes/` where a module owns routes. `Application/Api` contains exports; `Application/Contracts` contains internal persistence and effect ports. The classes in `Application` are not all public. Identity's profile operation protects email verification atomically, while Teams handlers explicitly coordinate current-team selection with Identity. See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership, allowed dependencies, transaction boundaries, and a complete invitation flow.
 
 ## Development and verification
 

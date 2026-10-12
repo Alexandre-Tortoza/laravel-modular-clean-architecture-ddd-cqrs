@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Profile\Domain\Policies;
+namespace App\Modules\Identity\Domain\Policies;
 
 class EmailVerificationPolicy
 {
