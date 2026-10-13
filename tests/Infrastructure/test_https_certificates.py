@@ -58,6 +58,15 @@ class CertificateInstallation(unittest.TestCase):
         self.assertNotEqual(self.install().returncode, 0)
         self.assertEqual(first, (self.target / "current").resolve())
 
+    def test_rejects_cn_only_and_near_expiry_pairs(self):
+        for days, san in [(2, False), (1, True)]:
+            command = ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", str(days), "-subj", "/CN=tls.smoke.invalid", "-keyout", str(self.key), "-out", str(self.cert)]
+            if san:
+                command += ["-addext", "subjectAltName=DNS:tls.smoke.invalid"]
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.assertNotEqual(self.install().returncode, 0)
+            self.assertFalse(self.target.exists())
+
     def test_rejects_unsafe_target_without_exposing_private_material(self):
         self.target.mkdir(mode=0o777)
         self.target.chmod(0o777)

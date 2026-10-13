@@ -6,6 +6,10 @@ services:
             [
                 '${PRODUCTION_RUNTIME_ENV_FILE:?Use the approved private runtime file}',
             ]
+        environment:
+            APP_URL: 'https://${TLS_DOMAIN:?Explicit approved TLS hostname}'
+            SESSION_SECURE_COOKIE: 'true'
+            TRUSTED_PROXIES: ''
         volumes:
             - type: bind
               source: '${PRODUCTION_UPLOAD_DIRECTORY:?Use the retained EC2 upload mount}'

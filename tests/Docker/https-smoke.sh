@@ -104,6 +104,13 @@ networks:
         driver: bridge
         internal: true
 YAML
+stage=invalid-runtime-inputs
+for invalid in 'bad.invalid;return 200;' '*.smoke.invalid' 'https://tls.smoke.invalid' ''; do
+    if docker run --rm --network none --env "TLS_DOMAIN=$invalid" --env TLS_CERTIFICATE_MECHANISM=provided "$nginx_image" >"$directory/invalid-domain" 2>&1; then exit 1; fi
+    grep -q 'TLS requires an explicit valid domain' "$directory/invalid-domain"
+done
+if docker run --rm --network none --env "TLS_DOMAIN=$domain" --env TLS_CERTIFICATE_MECHANISM=automatic "$nginx_image" >"$directory/invalid-mechanism" 2>&1; then exit 1; fi
+grep -q 'TLS requires an explicit valid domain' "$directory/invalid-mechanism"
 stage=compose-start
 "${compose[@]}" config --quiet
 started=true
