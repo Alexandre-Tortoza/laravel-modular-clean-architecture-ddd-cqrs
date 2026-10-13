@@ -183,7 +183,11 @@ fi
 grep -q 'Inject a stable APP_KEY' "$temporary_directory/missing-key"
 "${compose[@]}" exec -T php sh -ec '! test -w /app/config/app.php'
 "${compose[@]}" stop --timeout 30 php
-test "$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/up")" = 502
+upstream_status="$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/up")"
+case "$upstream_status" in
+    502|504) ;;
+    *) printf 'Expected an unavailable upstream, received HTTP %s.\n' "$upstream_status" >&2; exit 1 ;;
+esac
 "${compose[@]}" up --detach --no-build php
 for attempt in {1..40}; do
     if curl --silent --fail --max-time 5 "$base_url/up" > /dev/null; then break; fi
