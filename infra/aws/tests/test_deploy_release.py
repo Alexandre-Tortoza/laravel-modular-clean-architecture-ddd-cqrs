@@ -30,6 +30,7 @@ class RuntimeDouble:
     def start_web(self, selected): self.event('start-web')
     def ready(self, selected): self.event('ready')
     def start_processes(self, selected): self.event('start-processes')
+    def processes_ready(self, selected): self.event('processes-ready')
     def stop_candidate(self, selected): self.event('stop-candidate')
 
 
@@ -46,7 +47,7 @@ class ControlledDeploymentTest(unittest.TestCase):
     def test_only_successful_health_and_processes_commit_current_receipt(self):
         runtime = RuntimeDouble()
         receipt = self.run_deploy(runtime)
-        self.assertEqual(runtime.events, ['pull-v1.0.0', 'migrate', 'stop-processes', 'start-web', 'ready', 'start-processes', 'ready'])
+        self.assertEqual(runtime.events, ['pull-v1.0.0', 'migrate', 'stop-processes', 'start-web', 'ready', 'start-processes', 'ready', 'processes-ready'])
         self.assertEqual(self.store.read()['current']['release'], release())
         self.assertEqual(receipt['completed_at'], '2026-01-01T00:00:00+00:00')
         self.assertIsNone(self.store.read()['pending'])
@@ -89,7 +90,14 @@ class ControlledDeploymentTest(unittest.TestCase):
         self.run_deploy()
         runtime = RuntimeDouble()
         self.run_deploy(runtime)
-        self.assertEqual(runtime.events, ['ready'])
+        self.assertEqual(runtime.events, ['ready', 'processes-ready'])
+    def test_completed_retry_rejects_missing_process_without_mutating_a_valid_receipt(self):
+        self.run_deploy()
+        original = self.store.read()
+        runtime = RuntimeDouble('processes-ready')
+        with self.assertRaises(RuntimeError): self.run_deploy(runtime)
+        self.assertEqual(runtime.events, ['ready', 'processes-ready'])
+        self.assertEqual(self.store.read(), original)
     def test_rejects_mutable_foreign_malformed_or_unexpected_release_fields(self):
         for patch in [dict(php_image='fixture:latest'), dict(nginx_image=release()['nginx_image'].replace('123456789012', '999999999999')), dict(version='latest'), dict(source_revision='main'), dict(manifest_sha256='wrong'), dict(assets_sha256='wrong'), dict(secret='PRIVATE_CANARY')]:
             with self.subTest(patch=patch), self.assertRaises(ValueError): validate_release(release() | patch, self.contract)

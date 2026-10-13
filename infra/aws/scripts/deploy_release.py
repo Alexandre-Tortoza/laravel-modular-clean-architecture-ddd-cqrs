@@ -120,6 +120,7 @@ def deploy(request, contract, store, runtime, clock=lambda: datetime.now(timezon
             raise ValueError('An interrupted promotion requires explicit recovery before a new deployment')
         if current is not None and current['release'] == selected:
             runtime.ready(selected)
+            runtime.processes_ready(selected)
             return current
         if (current['release'] if current else None) != request['previous']:
             raise ValueError('The completed host release differs from the approved predecessor')
@@ -131,7 +132,7 @@ def deploy(request, contract, store, runtime, clock=lambda: datetime.now(timezon
         state['pending'] = pending
         store.write(state)
         try:
-            for phase, action in [('stopping-processes', runtime.stop_processes), ('starting-web', lambda: runtime.start_web(selected)), ('checking-web-readiness', lambda: runtime.ready(selected)), ('starting-processes', lambda: runtime.start_processes(selected)), ('checking-process-readiness', lambda: runtime.ready(selected))]:
+            for phase, action in [('stopping-processes', runtime.stop_processes), ('starting-web', lambda: runtime.start_web(selected)), ('checking-web-readiness', lambda: runtime.ready(selected)), ('starting-processes', lambda: runtime.start_processes(selected)), ('checking-process-readiness', lambda: runtime.ready(selected)), ('checking-process-status', lambda: runtime.processes_ready(selected))]:
                 pending['phase'] = phase
                 store.write(state)
                 action()
@@ -192,10 +193,12 @@ class DockerRuntime:
 
     def start_processes(self, selected):
         self.compose_command(selected, ['up', '-d', '--no-build', '--pull', 'never', '--scale', 'scheduler=1', 'worker', 'scheduler'])
-        output = self.compose_command(selected, ['ps', '--format', 'json', 'worker', 'scheduler']).decode()
+
+    def processes_ready(self, selected):
+        output = self.compose_command(selected, ['ps', '--all', '--format', 'json', 'worker', 'scheduler']).decode()
         information = [json.loads(line) for line in output.splitlines() if line.strip()]
         if len(information) == 1 and isinstance(information[0], list): information = information[0]
-        if len(information) != 2 or {item.get('Service') for item in information} != {'worker', 'scheduler'} or any(item.get('State') != 'running' for item in information):
+        if len(information) != 2 or {item.get('Service') for item in information} != {'worker', 'scheduler'} or any(item.get('State') != 'running' or item.get('Health') == 'unhealthy' for item in information):
             raise RuntimeError('Exactly one running worker and scheduler must accompany the release')
 
     def ready(self, selected):
