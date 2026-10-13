@@ -61,7 +61,7 @@ for volume in "$source_volume" "$target_volume"; do
     docker run --rm --label "template.backup-fixture=$token" --network none --read-only --user 0:0 --cap-drop ALL --cap-add CHOWN --security-opt no-new-privileges:true \
         --tmpfs /var/lib/postgresql/data:uid=999,gid=999,mode=0700 \
         --mount "type=volume,source=$volume,target=/uploads" --entrypoint sh "$image" \
-        -ec 'mkdir -p /uploads/private; chmod 0700 /uploads /uploads/private; chown 33:33 /uploads /uploads/private'
+        -ec 'mkdir -p /uploads/private; chmod 0700 /uploads /uploads/private; chown 33:33 /uploads/private /uploads'
 done
 start_database() {
     docker run --detach --name "$1" --label "template.backup-fixture=$token" --network none --user postgres \
