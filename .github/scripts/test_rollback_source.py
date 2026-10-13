@@ -1,5 +1,10 @@
 import base64
 import json
+import contextlib
+import io
+import subprocess
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 from rollback_source import prepare, recover
@@ -38,6 +43,19 @@ class RollbackSourceTest(unittest.TestCase):
         self.assertEqual(parameters['Operation'],['rollback'])
         self.assertEqual(json.loads(base64.b64decode(parameters['Release'][0])),self.request)
         self.assertEqual(calls[0][calls[0].index('--document-hash')+1],self.target['document_sha256'])
+
+    def test_cli_timeout_is_nonzero_and_withholds_private_command_diagnostics(self):
+        from rollback_source import main
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            for name,value in [('target',self.target),('identity',self.identity),('request',self.request)]:
+                (directory/name).write_text(json.dumps(value))
+            arguments=['rollback_source.py','execute','--target',str(directory/'target'),'--identity',str(directory/'identity'),'--request',str(directory/'request')]
+            output=io.StringIO()
+            with patch('sys.argv',arguments),patch.dict('os.environ',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/main',IMAGE_ROLLBACK_AUTHORIZED='true'),patch('rollback_source.prepare',return_value=self.request['expected_previous']),patch('rollback_source.recover',side_effect=subprocess.TimeoutExpired(['PRIVATE_CANARY'],30)),contextlib.redirect_stderr(output):
+                self.assertEqual(main(),1)
+            self.assertNotIn('PRIVATE_CANARY',output.getvalue())
+            self.assertIn('diagnostics withheld',output.getvalue())
 
 
 if __name__=='__main__': unittest.main()

@@ -5,6 +5,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 from deployment_source import execute_aws, send_and_wait, validate_target
@@ -66,7 +67,7 @@ def main():
             if os.environ.get('IMAGE_ROLLBACK_AUTHORIZED') != 'true': raise ValueError('Rollback requires explicit owner activation')
             print(json.dumps(recover(target, request, execute_aws), sort_keys=True))
         return 0
-    except (ValueError, KeyError, TypeError, OSError, RuntimeError):
+    except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError):
         print('Controlled rollback failed; private artifact, credential and SSM diagnostics withheld', file=sys.stderr)
         return 1
 

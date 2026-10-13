@@ -106,9 +106,6 @@ class RollbackTest(unittest.TestCase):
         self.store.write(state)
         with self.assertRaises(ValueError): rollback(self.request, self.store, RollbackRuntime(), Clock())
 
-
-if __name__ == '__main__': unittest.main()
-
 class RollbackSmokeBoundaryTest(unittest.TestCase):
     def test_private_input_change_and_wrong_https_assets_fail_before_commit(self):
         from unittest.mock import patch
@@ -131,3 +128,6 @@ class RollbackSmokeBoundaryTest(unittest.TestCase):
             inputs.write_text('APP_KEY=CHANGED_PRIVATE_CANARY\n')
             with patch.object(runtime, 'command') as command, self.assertRaises(ValueError): runtime.smoke(selected)
             command.assert_not_called()
+
+
+if __name__ == '__main__': unittest.main()
