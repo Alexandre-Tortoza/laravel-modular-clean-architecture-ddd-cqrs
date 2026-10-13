@@ -10,6 +10,7 @@ on:
       - docker/frontend-artifact.mjs
       - compose.production.processes.yaml
       - tests/Docker/processes-smoke.sh
+      - tests/Docker/test_process_readiness.py
       - tests/Docker/queue-runtime.php
       - .github/workflows/processes-image.yml
       - composer.json
@@ -36,5 +37,7 @@ jobs:
           persist-credentials: false
       - name: Build the PHP runtime
         run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --tag laravel-php:processes --target runtime .
+      - name: Distinguish entrypoint wrappers from actual PHP Artisan children
+        run: python3 tests/Docker/test_process_readiness.py --image laravel-php:processes -v
       - name: Exercise dedicated queue and scheduler containers
         run: bash tests/Docker/processes-smoke.sh laravel-php:processes

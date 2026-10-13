@@ -8,7 +8,13 @@ upload_volume="${project}-uploads"
 cleanup() {
     result=$?
     if test "$result" -ne 0; then
-        docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" logs >&2 || true
+        printf '%s\n' 'Process smoke failed; reporting only fixture state categories.' >&2
+        for service in worker scheduler; do
+            container="$(docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" ps --all -q "$service" 2>/dev/null || true)"
+            if test -n "$container"; then
+                docker inspect --format "$service status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}" "$container" >&2 2>/dev/null || true
+            fi
+        done
     fi
     docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" down --volumes --timeout 90 >/dev/null 2>&1 || true
     docker volume rm "$volume" >/dev/null 2>&1 || true
@@ -78,8 +84,12 @@ wait_for_processes() {
         ready=false
         for attempt in {1..30}; do
             if docker exec "$container" php -r '
+                $executable = @readlink("/proc/self/exe");
+                if (! is_string($executable) || $executable === "") { exit(1); }
                 foreach (glob("/proc/[0-9]*/cmdline") as $path) {
-                    if ($path !== "/proc/".getmypid()."/cmdline" && str_contains((string) @file_get_contents($path), "artisan\0".$argv[1]."\0")) { exit(0); }
+                    if ($path === "/proc/".getmypid()."/cmdline" || @readlink(dirname($path)."/exe") !== $executable) { continue; }
+                    $arguments = explode("\0", (string) @file_get_contents($path));
+                    if (($arguments[1] ?? null) === "artisan" && ($arguments[2] ?? null) === $argv[1]) { exit(0); }
                 }
                 exit(1);
             ' "$command"; then
