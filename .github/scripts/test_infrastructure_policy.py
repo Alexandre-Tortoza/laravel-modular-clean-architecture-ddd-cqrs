@@ -15,6 +15,15 @@ def planned(resource_type, values, unknown=None):
 
 
 class InfrastructurePolicyTest(unittest.TestCase):
+    def test_health_metric_global_permission_requires_one_exact_namespace_and_region(self):
+        action = {'Effect': 'Allow', 'Action': ['cloudwatch:PutMetricData'], 'Resource': ['*'],
+                  'Condition': {'StringEquals': {'cloudwatch:namespace': 'Template/fixture/Runtime', 'aws:RequestedRegion': 'us-east-1'}}}
+        self.assertEqual(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps({'Statement': [action]})})), [])
+        for changed in [dict(action, Condition={}),
+                        dict(action, Condition={'StringEquals': {'cloudwatch:namespace': '*', 'aws:RequestedRegion': 'us-east-1'}}),
+                        dict(action, Action=['cloudwatch:PutMetricData', 'iam:CreateRole'])]:
+            self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps({'Statement': [changed]})})))
+
     def test_json_and_hcl_tfvars_cannot_hide_runtime_secrets(self):
         for filename, source in [('terraform.tfvars.json', '{"nested":{"DB_PASSWORD":"canary-secret"}}'),
                                  ('fixture.tfvars', 'APP_KEY = "canary-secret"'),
@@ -77,6 +86,21 @@ class InfrastructurePolicyTest(unittest.TestCase):
         self.assertEqual(validate_plan(planned("aws_vpc_security_group_ingress_rule", values, {"referenced_security_group_id": True})), [])
         self.assertTrue(validate_plan(planned("aws_vpc_security_group_ingress_rule", values)))
 
+    def test_private_valkey_uses_security_group_reference_without_public_access(self):
+        values = {"ip_protocol": "tcp", "from_port": 6379, "to_port": 6379}
+        self.assertEqual(validate_plan(planned("aws_vpc_security_group_ingress_rule", values, {"referenced_security_group_id": True})), [])
+        self.assertTrue(validate_plan(planned("aws_vpc_security_group_ingress_rule", values)))
+
+    def test_managed_valkey_rejects_plaintext_unauthenticated_or_replicated_topologies(self):
+        values = {"engine": "valkey", "num_cache_clusters": 1, "cluster_mode": "disabled", "automatic_failover_enabled": False,
+                  "multi_az_enabled": False, "transit_encryption_enabled": True, "transit_encryption_mode": "required",
+                  "at_rest_encryption_enabled": True, "user_group_ids": ["fixture-group"]}
+        self.assertEqual(validate_plan(planned("aws_elasticache_replication_group", values)), [])
+        for field, value in [("engine", "redis"), ("num_cache_clusters", 2), ("cluster_mode", "enabled"),
+                             ("transit_encryption_enabled", False), ("transit_encryption_mode", "preferred"),
+                             ("at_rest_encryption_enabled", False), ("automatic_failover_enabled", True), ("user_group_ids", [])]:
+            self.assertTrue(validate_plan(planned("aws_elasticache_replication_group", dict(values, **{field: value}))))
+
     def test_unrestricted_egress_and_inline_rules_are_rejected(self):
         self.assertTrue(validate_plan(planned("aws_vpc_security_group_egress_rule", {"cidr_ipv4": "0.0.0.0/0", "ip_protocol": "-1"})))
         self.assertTrue(validate_plan(planned("aws_security_group", {"ingress": [{"from_port": 22}]})))
@@ -103,6 +127,15 @@ class InfrastructurePolicyTest(unittest.TestCase):
             self.assertTrue(any("mocked provider" in message for message in result))
             self.assertTrue(any("command = plan" in message for message in result))
             self.assertNotIn("do-not-print-secret-canary", str(result))
+
+    def test_valkey_literal_auth_token_and_password_variants_are_rejected_before_state(self):
+        for field, value in [('auth_token', '"canary-private-credential"'), ('auth_token_wo', '"canary-private-credential"'),
+                             ('passwords', '["canary-private-credential"]'), ('passwords_wo', '["canary-private-credential"]')]:
+            with tempfile.TemporaryDirectory() as directory:
+                (pathlib.Path(directory) / 'unsafe.tf').write_text(field + ' = ' + value + '\n')
+                errors = validate_sources(directory)
+                self.assertTrue(errors, field)
+                self.assertNotIn('canary-private-credential', str(errors))
 
     def test_sources_allow_secret_references_and_plan_only_mock_tests(self):
         with tempfile.TemporaryDirectory() as directory:
