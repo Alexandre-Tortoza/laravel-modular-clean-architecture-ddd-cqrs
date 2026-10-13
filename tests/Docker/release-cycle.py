@@ -17,6 +17,11 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 CYCLE_STAGE = 'disposable-runner-guard'
+PUBLIC_FAILURE_CHECKS = {
+    'Native failed readiness was accepted': 'unexpected-successful-readiness',
+    'Readiness failure did not retain its exact diagnostic phase': 'failed-promotion-receipt-or-phase',
+    'Unready candidate or background processes kept running': 'candidate-processes-still-running',
+}
 spec = importlib.util.spec_from_file_location('retained_rollback_fixture', Path(__file__).with_name('rollback-smoke.py'))
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
@@ -270,9 +275,12 @@ def cli():
     try:
         main()
         return 0
-    except Exception:
+    except Exception as error:
         print('Disposable release cycle failed; private command diagnostics withheld.', file=sys.stderr)
         print('Failed stage: ' + CYCLE_STAGE, file=sys.stderr)
+        diagnostic = PUBLIC_FAILURE_CHECKS.get(str(error))
+        if diagnostic:
+            print('Failed public check: ' + diagnostic, file=sys.stderr)
         return 1
 
 
