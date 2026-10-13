@@ -19,6 +19,8 @@ def checked(command, **options):
 
 
 def main():
+    if len(sys.argv) != 2:
+        raise ValueError('Select the locally built production runtime fixture image')
     root = Path(__file__).resolve().parents[2]
     project = 'runtime-secret-' + uuid.uuid4().hex[:12]
     with tempfile.TemporaryDirectory(prefix=project) as temporary:
@@ -44,7 +46,7 @@ def main():
                  '--output', str(runtime), '--aws-cli', str(fake), '--execute'])
         empty = directory / 'empty.env'
         empty.touch()
-        image = 'php:8.5.10-fpm-bookworm@sha256:cc45fc347dcdef585e907fa7dab27087039f2adf7bd911c22b79a3d80cc98d08'
+        image = sys.argv[1]
         environment = dict(os.environ, RUNTIME_ENV_FILE=str(runtime), PHP_IMAGE=image, SOURCE_REVISION='a' * 40,
                            PRODUCTION_RUNTIME_ENV_FILE=str(runtime), PRODUCTION_PHP_IMAGE=image, PRODUCTION_NGINX_TLS_IMAGE=image,
                            PRODUCTION_UPLOAD_DIRECTORY=str(private), TLS_DOMAIN='fixture.invalid', TLS_CERTIFICATE_MECHANISM='provided',
@@ -53,15 +55,33 @@ def main():
                    '-f', str(root / 'compose.production.https.yaml'),
                    '-f', str(root / 'compose.production.processes.yaml'), '-f', str(root / 'compose.production.migrations.yaml'),
                    '--profile', 'release']
+        override = directory / 'fixture.yaml'
+        override.write_text('services:\n  php:\n    volumes: !override ["app-storage:/app/storage/app"]\n')
+        command += ['-f', str(override)]
         try:
-            checked(['docker', 'pull', image])
             php = 'echo json_encode(array_map(fn($key) => hash("sha256", getenv($key)), ["APP_KEY", "DB_PASSWORD", "DB_USERNAME"]));'
             expected = [hashlib.sha256(fixture[key].encode()).hexdigest() for key in ['APP_KEY', 'DB_PASSWORD', 'DB_USERNAME']]
             for service in ['php', 'worker', 'scheduler', 'migration']:
                 actual = checked(command + ['run', '--rm', '--no-deps', '-T', '--entrypoint', 'php', service, '-r', php], env=environment)
                 if json.loads(actual) != expected:
                     raise ValueError('Credential round trip changed runtime values')
-            print('Actual PHP getenv preserved APP_KEY and database credentials in all four services; no AWS contacted')
+            native = ('require "/app/vendor/autoload.php"; $app = require "/app/bootstrap/app.php"; '
+                      '$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); '
+                      'echo json_encode(array_map(fn($value) => hash("sha256", $value), '
+                      '[config("app.key"), config("database.connections.pgsql.password"), config("database.connections.pgsql.username")]));')
+            for password in ['null', '(TRUE)', '"quoted"', "'quoted'", ' edge spaces ', fixture['DB_PASSWORD']]:
+                fixture['DB_PASSWORD'] = password
+                response = json.dumps({'SecretString': json.dumps(fixture)})
+                fake.write_text('#!' + sys.executable + '\nprint(' + repr(response) + ')\n')
+                checked([sys.executable, str(root / 'infra/aws/scripts/runtime_secrets.py'), '--config', str(config),
+                         '--output', str(runtime), '--aws-cli', str(fake), '--execute'])
+                expected = [hashlib.sha256(fixture[key].encode()).hexdigest() for key in ['APP_KEY', 'DB_PASSWORD', 'DB_USERNAME']]
+                for service in ['php', 'worker', 'scheduler', 'migration']:
+                    shell = 'php artisan config:cache >/dev/null; exec php -r ' + "'" + native + "'"
+                    actual = checked(command + ['run', '--rm', '--no-deps', '-T', '--entrypoint', 'sh', service, '-ec', shell], env=environment)
+                    if json.loads(actual) != expected:
+                        raise ValueError('Cached native Laravel configuration changed runtime credentials')
+            print('Actual PHP getenv and cached Laravel configuration preserved credentials in all four services and six edge cases; no AWS contacted')
         finally:
             checked(command + ['down', '--volumes', '--remove-orphans'], env=environment)
 

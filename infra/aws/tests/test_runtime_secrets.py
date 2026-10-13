@@ -58,6 +58,7 @@ class RuntimeSecretsTest(unittest.TestCase):
         environment = run.call_args.kwargs['env']
         self.assertEqual(environment['AWS_SHARED_CREDENTIALS_FILE'], '/dev/null')
         self.assertEqual(environment['AWS_CONFIG_FILE'], '/dev/null')
+        self.assertEqual(environment['BOTO_CONFIG'], '/dev/null')
         self.assertNotIn('AWS_ACCESS_KEY_ID', environment)
         self.assertEqual(list(self.private.iterdir()), [self.destination])
 

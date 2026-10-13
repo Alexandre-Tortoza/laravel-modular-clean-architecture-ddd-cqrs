@@ -23,6 +23,14 @@ def single_line(value):
     return isinstance(value, str) and bool(value) and len(value.encode()) <= 16384 and not any(ord(char) < 32 or ord(char) == 127 for char in value)
 
 
+def laravel_string(value):
+    # Laravel Env recognizes reserved types before removing one pair of outer
+    # quotes. Raw Compose must retain this extra pair to recover a literal string.
+    if value.lower() in {'true', '(true)', 'false', '(false)', 'empty', '(empty)', 'null', '(null)'} or (len(value) >= 2 and value[0] in {'"', "'"} and value[-1] == value[0]):
+        return '"' + value + '"'
+    return value
+
+
 def validate_config(config):
     if not isinstance(config, dict) or set(config) != {'secret_arn', 'region', 'database_username', 'environment'}:
         raise ValueError('Invalid runtime metadata')
@@ -58,7 +66,7 @@ def fetch(config, aws_cli):
     # only its EC2 instance profile, never an operator's permanent access keys.
     environment = {key: value for key, value in os.environ.items() if not key.startswith('AWS_')}
     environment.update(AWS_CONFIG_FILE='/dev/null', AWS_SHARED_CREDENTIALS_FILE='/dev/null',
-                       AWS_EC2_METADATA_DISABLED='false', AWS_PAGER='', AWS_CLI_AUTO_PROMPT='off')
+                       BOTO_CONFIG='/dev/null', AWS_EC2_METADATA_DISABLED='false', AWS_PAGER='', AWS_CLI_AUTO_PROMPT='off')
     result = subprocess.run([aws_cli, 'secretsmanager', 'get-secret-value', '--region', config['region'],
                              '--secret-id', config['secret_arn'], '--version-stage', 'AWSCURRENT', '--output', 'json',
                              '--no-cli-pager', '--cli-connect-timeout', '5', '--cli-read-timeout', '15'],
@@ -110,7 +118,8 @@ def deliver(config, output, aws_cli):
                        'DB_CONNECTION': 'pgsql', 'DB_PORT': '5432', 'DB_SSLMODE': 'verify-full',
                        'CACHE_STORE': 'database', 'SESSION_DRIVER': 'database', 'QUEUE_CONNECTION': 'database',
                        **config['environment'], **secret}
-        content = ''.join(f'{key}={value}\n' for key, value in environment.items()).encode()
+        literal_keys = SECRET_KEYS | {'DB_DATABASE'}
+        content = ''.join(f'{key}={laravel_string(value) if key in literal_keys else value}\n' for key, value in environment.items()).encode()
         temporary = '.runtime-' + secrets.token_hex(16)
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
         with os.fdopen(descriptor, 'wb') as current:
