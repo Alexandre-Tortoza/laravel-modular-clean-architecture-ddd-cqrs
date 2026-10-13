@@ -19,6 +19,8 @@ def main():
         empty.touch()
         environment = dict(os.environ, PHP_IMAGE="fixture.invalid/php:offline",
                            RUNTIME_ENV_FILE=str(runtime), SOURCE_REVISION="0" * 40,
+                           NGINX_IMAGE="fixture.invalid/nginx@sha256:" + "0" * 64,
+                           UPLOAD_DIRECTORY=str(temporary), DB_CA_BUNDLE=str(runtime),
                            SMOKE_PHP_IMAGE="fixture.invalid/php:offline",
                            SMOKE_NGINX_IMAGE="fixture.invalid/nginx:offline",
                            SMOKE_RUNTIME_ENV_FILE=str(runtime), SMOKE_DB_DATABASE="smoke_offline",
@@ -29,6 +31,7 @@ def main():
                            TLS_DOMAIN="fixture.invalid", TLS_CERTIFICATE_MECHANISM="provided",
                            TLS_CERTIFICATE_DIRECTORY=str(temporary), TLS_ACME_WEBROOT=str(temporary), TLS_BIND_IPV4="127.0.0.1")
         combinations = [
+            (["compose.production.release.yaml"], ["release"], False, False),
             (["compose.production.https.yaml"], [], False, False),
             (["compose.yaml"], [], True, False),
             (["compose.yaml"], ["redis"], True, True),
@@ -50,7 +53,18 @@ def main():
             result = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, check=False)
             if result.returncode:
                 raise SystemExit("Compose configuration failed: " + ", ".join(files))
-            errors = validate_compose(json.loads(result.stdout), development, redis)
+            configuration = json.loads(result.stdout)
+            errors = validate_compose(configuration, development, redis)
+            if files == ["compose.production.release.yaml"]:
+                services = configuration['services']
+                for service in ('php', 'worker', 'scheduler', 'migration'):
+                    uploads = [mount for mount in services[service]['volumes'] if mount['target'] == '/app/storage/app']
+                    if len(uploads) != 1 or uploads[0]['type'] != 'bind' or uploads[0]['source'] != str(temporary):
+                        errors.append('All release processes must use the same retained upload bind')
+                    if services[service]['environment']['APP_URL'] != 'https://fixture.invalid' or services[service]['stop_grace_period'] != '1m30s':
+                        errors.append('All release processes must use secure runtime URL and 90s grace')
+                if services['scheduler']['deploy']['replicas'] != 1:
+                    errors.append('The release scheduler must remain a singleton')
             if errors:
                 raise SystemExit("; ".join(errors))
             print("Compose config passed: " + ", ".join(files) + " profiles=" + (",".join(profiles) or "off"))
