@@ -4,7 +4,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ConfigurationUrlParser;
 use Illuminate\Support\Facades\Process;
 
-test('managed Valkey TLS retains verified peers credentials and separate logical databases in cached native configuration', function () {
+test('managed Valkey TLS retains verified peers credentials and separate logical databases in cached native configuration', function (string $username, string $encodedUsername) {
     $directory = sys_get_temp_dir().'/managed-valkey-config-'.bin2hex(random_bytes(8));
     mkdir($directory, 0700);
     $environment = [
@@ -13,7 +13,7 @@ test('managed Valkey TLS retains verified peers credentials and separate logical
         'APP_SERVICES_CACHE' => $directory.'/services.php',
         'APP_PACKAGES_CACHE' => $directory.'/packages.php',
         'REDIS_URL' => 'rediss://fixture.cache.amazonaws.com:6379',
-        'REDIS_USERNAME' => 'fixture_app',
+        'REDIS_USERNAME' => $encodedUsername,
         'REDIS_PASSWORD' => 'synthetic-private-credential',
         'REDIS_DB' => '0',
         'REDIS_CACHE_DB' => '1',
@@ -34,7 +34,7 @@ test('managed Valkey TLS retains verified peers credentials and separate logical
             expect($parsed['driver'])->toBe('tls')
                 ->and($parsed['host'])->toBe('fixture.cache.amazonaws.com')
                 ->and($parsed['database'])->toBe($database)
-                ->and($parsed['username'])->toBe('fixture_app')
+                ->and($parsed['username'])->toBe($username)
                 ->and($parsed['password'])->toBe($environment['REDIS_PASSWORD'])
                 ->and($parsed['context'] ?? null)->toBe(['stream' => ['verify_peer' => true, 'verify_peer_name' => true]]);
         }
@@ -44,4 +44,7 @@ test('managed Valkey TLS retains verified peers credentials and separate logical
     } finally {
         (new Filesystem)->deleteDirectory($directory);
     }
-});
+})->with([
+    'ordinary username' => ['fixture_app', 'fixture_app'],
+    'reserved literal username' => ['null', '"null"'],
+]);
