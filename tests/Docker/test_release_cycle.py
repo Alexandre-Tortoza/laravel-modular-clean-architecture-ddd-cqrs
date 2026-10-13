@@ -72,6 +72,12 @@ class PrivateCliBoundary(unittest.TestCase):
         self.assertNotIn('privatefixturecanary', output.getvalue())
         self.assertNotIn('--data-urlencode', output.getvalue())
 
+    def test_failure_diagnostics_whitelist_phase_and_never_serialize_private_state(self):
+        state = dict(current=dict(release=dict(version='N')), pending=dict(release=dict(version='candidate'), phase='privatefixturecanary', password='privatefixturecanary'))
+        result = cycle.failure_diagnostics(state, dict(version='N'), dict(version='candidate'))
+        self.assertEqual(result, dict(current_matches=True, candidate_matches=True, phase='unknown'))
+        self.assertNotIn('privatefixturecanary', json.dumps(result))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -46,6 +46,14 @@ def require_disposable_runner(arguments):
         raise ValueError('Only the disposable default Docker context is supported')
 
 
+def failure_diagnostics(state, current, candidate):
+    pending = state.get('pending') or {}
+    completed = state.get('current') or {}
+    phase = pending.get('phase')
+    known_phases = {'stopping-processes', 'starting-web', 'checking-web-readiness', 'starting-processes', 'checking-process-readiness', 'checking-process-status'}
+    return dict(current_matches=completed.get('release') == current, candidate_matches=pending.get('release') == candidate, phase=phase if phase in known_phases else 'unknown')
+
+
 class Browser:
     def __init__(self, runtime, directory):
         self.runtime, self.directory = runtime, directory
@@ -243,7 +251,9 @@ def main():
             else:
                 raise ValueError('Native failed readiness was accepted')
             failed = store.read()
-            if failed['current']['release'] != b or failed['pending']['release'] != a or failed['pending']['phase'] != 'checking-web-readiness':
+            diagnostics = failure_diagnostics(failed, b, a)
+            print('Readiness failure diagnostics: ' + json.dumps(diagnostics, sort_keys=True))
+            if diagnostics != dict(current_matches=True, candidate_matches=True, phase='checking-web-readiness'):
                 raise ValueError('Readiness failure did not retain its exact diagnostic phase')
             active = runtime.compose_command(b, ['ps', '--status', 'running', '--services']).decode().splitlines()
             if active:
