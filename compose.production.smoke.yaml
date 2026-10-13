@@ -36,6 +36,22 @@ services:
         stop_grace_period: 30s
         networks: [database]
 
+    redis:
+        image: redis:8.2.6-alpine@sha256:ea5a07305d6c66f99df5a5ff8d9659e8f6cb598e6e586dc8dd92b7fcd915746e
+        profiles: [redis]
+        user: redis
+        command: ['redis-server', '--save', '', '--appendonly', 'no']
+        read_only: true
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 2s
+            timeout: 5s
+            retries: 30
+        stop_grace_period: 30s
+        networks: [database]
+
 volumes:
     database:
 
