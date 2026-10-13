@@ -18,6 +18,17 @@ on:
         type: boolean
         default: false
 
+      retain_oci_images:
+        description: 'Owner opt-in: retain full OCI images after protected environment approval (default false)'
+        type: boolean
+        default: false
+      environment:
+        description: 'Pre-existing publisher environment approved in aws-identities.json'
+        type: string
+      role_arn:
+        description: 'Approved publisher role ARN (identity check only; this build never assumes AWS credentials)'
+        type: string
+
 permissions:
   contents: read
 
@@ -33,6 +44,7 @@ jobs:
         run: python3 -m unittest discover -s .github/scripts -p 'test_image_release*.py' -v
 
   immutable-images:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.retain_oci_images)
     needs: image-contract
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -56,63 +68,104 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends skopeo
           skopeo --version
-      - name: Prepare source and recoverable predecessor
+      - name: Build and verify retained bytes locally without publishing images
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
           PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
           INITIAL_RELEASE: ${{ inputs.initial_release }}
+        run: bash .github/scripts/build_immutable_images.sh
+      - name: Retain sanitized manifest and checksum evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-evidence
+          path: image-evidence/
+          if-no-files-found: error
+          retention-days: 90
+
+  protection:
+    if: github.event_name == 'workflow_dispatch' && inputs.retain_oci_images
+    needs: image-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      environment: ${{ steps.identity.outputs.environment }}
+      environment_id: ${{ steps.identity.outputs.environment_id }}
+      environment_node_id: ${{ steps.identity.outputs.environment_node_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require owner activation before scheduling any environment
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENABLED: ${{ vars.ENABLE_IMAGE_PUBLISHING }}
+          IDENTITY_ENVIRONMENT: ${{ inputs.environment }}
+          IDENTITY_ROLE_ARN: ${{ inputs.role_arn }}
         run: |
-          mkdir -p image-release/current
-          if test "$GITHUB_EVENT_NAME" = pull_request; then
-            revision="$(git rev-parse HEAD)"
-            previous_revision="$(git rev-parse HEAD^)"
-            test "$revision" != "$previous_revision"
-            git worktree add --detach "$RUNNER_TEMP/previous-source" "$previous_revision"
-            mkdir -p image-release/previous
-            echo "PREVIOUS_SOURCE=$RUNNER_TEMP/previous-source" >>"$GITHUB_ENV"
-            echo "PREVIOUS_REVISION=$previous_revision" >>"$GITHUB_ENV"
-            echo 'RELEASE_VERSION=v0.0.1' >>"$GITHUB_ENV"
-          else
-            test "$GITHUB_REF" = refs/heads/main
-            python3 -c 'import os,sys;sys.path.insert(0,".github/scripts");from image_release import validate_identity;validate_identity(os.environ["GITHUB_SHA"],os.environ["RELEASE_VERSION"])'
-            if test "$INITIAL_RELEASE" = true; then
-              test -z "$PREVIOUS_RUN_ID"
-            else
-              test -n "$PREVIOUS_RUN_ID"
-              python3 .github/scripts/image_release_source.py fetch-previous --run-id "$PREVIOUS_RUN_ID" --directory image-release/previous
-            fi
-            echo "RELEASE_VERSION=$RELEASE_VERSION" >>"$GITHUB_ENV"
-          fi
-          echo "SOURCE_REVISION=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
-      - name: Build each release once using a shared PHP and HTTPS Nginx graph
+          test "$ENABLED" = true
+          python3 .github/scripts/aws_identity_preflight.py --purpose publisher --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$GITHUB_SHA" --role-arn "$IDENTITY_ROLE_ARN"
+
+  protected-producer:
+    needs: protection
+    if: needs.protection.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: ${{ needs.protection.outputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout exact approved producer source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind protection again after human approval before retaining images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENABLED: ${{ vars.ENABLE_IMAGE_PUBLISHING }}
+          IDENTITY_ENVIRONMENT: ${{ needs.protection.outputs.environment }}
+          IDENTITY_ROLE_ARN: ${{ inputs.role_arn }}
+          APPROVED_ID: ${{ needs.protection.outputs.environment_id }}
+          APPROVED_NODE_ID: ${{ needs.protection.outputs.environment_node_id }}
         run: |
-          if test "$GITHUB_EVENT_NAME" = pull_request; then
-            (
-              cd "$PREVIOUS_SOURCE"
-              SOURCE_REVISION="$PREVIOUS_REVISION" RELEASE_VERSION=v0.0.0 RELEASE_DIRECTORY="$GITHUB_WORKSPACE/image-release/previous" \
-                docker buildx bake --allow "fs.write=$GITHUB_WORKSPACE/image-release/previous" --file "$GITHUB_WORKSPACE/docker-bake.release.hcl" --progress=plain release
-            )
-            python3 .github/scripts/image_release.py create --directory image-release/previous --source "$PREVIOUS_SOURCE" --source-revision "$PREVIOUS_REVISION" --version v0.0.0
-          fi
-          RELEASE_DIRECTORY="$GITHUB_WORKSPACE/image-release/current" docker buildx bake --file docker-bake.release.hcl --progress=plain release
-          previous=()
-          if test -d image-release/previous; then previous=(--previous image-release/previous); fi
-          python3 .github/scripts/image_release.py create --directory image-release/current --source . --source-revision "$SOURCE_REVISION" --version "$RELEASE_VERSION" "${previous[@]}"
-      - name: Prove OCI runtime and predecessor recovery without rebuild
+          test "$ENABLED" = true
+          python3 .github/scripts/aws_identity_preflight.py --purpose publisher --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$GITHUB_SHA" --role-arn "$IDENTITY_ROLE_ARN" >"$RUNNER_TEMP/producer-identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'producer-identity.json').read_text())
+          if identity['environment_id'] != os.environ['APPROVED_ID'] or identity['environment_node_id'] != os.environ['APPROVED_NODE_ID']:
+              raise ValueError('The approved producer environment changed before artifact retention.')
+          PY
+      - name: Configure pinned shared BuildKit graph
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.38.0
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      - name: Install OCI transport without registry credentials
         run: |
-          if test "$GITHUB_EVENT_NAME" = pull_request; then
-            bash tests/Docker/immutable-images-smoke.sh image-release/current image-release/previous "$SOURCE_REVISION" "$PREVIOUS_REVISION" "$PREVIOUS_SOURCE"
-          else
-            for role in php nginx; do
-              skopeo copy "oci-archive:image-release/current/$role.oci.tar" "docker-daemon:laravel-$role:oci-current"
-            done
-            bash tests/Docker/https-smoke.sh laravel-php:oci-current laravel-nginx:oci-current "$SOURCE_REVISION"
-            previous=()
-            if test -d image-release/previous; then previous=(--previous image-release/previous); fi
-            python3 .github/scripts/image_release.py verify --directory image-release/current "${previous[@]}"
-          fi
-      - name: Retain complete current and predecessor OCI artifacts
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+          skopeo --version
+      - name: Build once and verify original OCI archives locally
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+          INITIAL_RELEASE: ${{ inputs.initial_release }}
+        run: bash .github/scripts/build_immutable_images.sh
+      - name: Retain owner-approved complete OCI archives for later promotion without rebuild
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: image-release

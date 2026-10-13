@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import patch
+import hashlib
+from pathlib import Path
+import tempfile
+import zipfile
 
-from image_release_source import producer, prepare_publication
+from image_release_source import producer, prepare_publication, extract_artifact
 
 
 class ProducerEvidenceTest(unittest.TestCase):
@@ -38,6 +42,27 @@ class ProducerEvidenceTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 prepare_publication(self.repository, 123, '.', self.sha, 'v1.0.0', previous_run_id=122, initial=True)
             self.assertEqual(prepare_publication(self.repository, 123, '.', self.sha, 'v1.0.0', initial=True), manifest)
+
+    def test_archive_digest_is_verified_before_safe_extraction(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'artifact.zip'
+            files = {f'current/{name}': b'fixture' for name in ('image-release.json', 'php.oci.tar', 'nginx.oci.tar')}
+            with zipfile.ZipFile(archive, 'w') as contents:
+                for name, value in files.items():
+                    contents.writestr(name, value)
+            expected = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
+            extract_artifact(archive, expected, root / 'safe')
+            self.assertEqual((root / 'safe/current/php.oci.tar').read_bytes(), b'fixture')
+            with self.assertRaises(ValueError):
+                extract_artifact(archive, 'sha256:' + 'f' * 64, root / 'tampered')
+            self.assertFalse((root / 'tampered').exists())
+            with zipfile.ZipFile(archive, 'w') as contents:
+                contents.writestr('../escape', b'private')
+            expected = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
+            with self.assertRaises(ValueError):
+                extract_artifact(archive, expected, root / 'unsafe')
+            self.assertFalse((root / 'escape').exists())
 
 
 if __name__ == '__main__':

@@ -7,8 +7,10 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import zipfile
+import re
 
-from image_release import predecessor, verify_bundle
+from image_release import file_hash, predecessor, verify_bundle
 from template_release import api, gate_evidence
 
 
@@ -35,13 +37,41 @@ def check_source(repository, manifest):
             raise ValueError('Retained dependency locks differ from the producer source.')
 
 
+def extract_artifact(archive, expected_digest, destination):
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}', expected_digest or '') or 'sha256:' + file_hash(archive) != expected_digest:
+        raise ValueError('Downloaded artifact ZIP differs from the digest recorded by GitHub.')
+    filenames = ('image-release.json', 'php.oci.tar', 'nginx.oci.tar')
+    current = {f'current/{name}' for name in filenames}
+    previous = {f'previous/{name}' for name in filenames}
+    with zipfile.ZipFile(archive) as contents:
+        entries = contents.infolist()
+        names = {item.filename for item in entries}
+        if names not in (current, current | previous) or len(names) != len(entries):
+            raise ValueError('The artifact must contain exactly complete current/optional predecessor bundles.')
+        if any(item.is_dir() or (item.external_attr >> 16) & 0o170000 not in (0, 0o100000) or item.file_size > 2 * 1024**3 for item in entries):
+            raise ValueError('Artifact entries must be bounded regular files without links.')
+        destination = Path(destination)
+        if destination.is_symlink() or (destination.exists() and (not destination.is_dir() or any(destination.iterdir()))):
+            raise ValueError('Download destination must be an empty owned directory.')
+        destination.mkdir(parents=True, exist_ok=True)
+        for item in entries:
+            path = destination / item.filename
+            path.parent.mkdir(exist_ok=True)
+            with contents.open(item) as source, path.open('xb') as target:
+                shutil.copyfileobj(source, target, 1024**2)
+
+
 def download(repository, run_id, destination, revision=None):
     run = producer(repository, run_id, revision)
     artifacts = api(f'repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
     matches = [item for item in artifacts if item['name'] == 'image-release' and not item['expired']]
     if len(matches) != 1:
         raise ValueError('The producer must retain one unexpired image-release artifact.')
-    subprocess.run(['gh', 'run', 'download', str(run_id), '--repo', repository, '--name', 'image-release', '--dir', str(destination)], check=True)
+    with tempfile.TemporaryDirectory(prefix='producer-transport-') as temporary:
+        archive = Path(temporary) / 'artifact.zip'
+        with archive.open('xb') as output:
+            subprocess.run(['gh', 'api', '--method', 'GET', f'repos/{repository}/actions/artifacts/{matches[0]["id"]}/zip'], stdout=output, check=True)
+        extract_artifact(archive, matches[0].get('digest'), destination)
     current, previous = Path(destination) / 'current', Path(destination) / 'previous'
     manifest = verify_bundle(current, previous if previous.exists() else None)
     if manifest['source_revision'] != run['head_sha']:

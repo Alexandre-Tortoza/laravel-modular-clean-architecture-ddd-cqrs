@@ -159,6 +159,8 @@ class OciArchive:
                 with tarfile.open(fileobj=reader, mode='r|') as contents:
                     for entry in contents:
                         path = normalized(entry.name)
+                        if path in ('usr/bin/node', 'usr/local/bin/node', 'usr/bin/npm', 'usr/local/bin/npm') or path.startswith('usr/local/lib/node_modules/'):
+                            raise ValueError('Production runtime contains frontend build tools.')
                         if path in ('app/.env', 'app/auth.json') or path.startswith(('app/.git/', 'app/node_modules/', 'app/resources/js/', 'app/resources/css/')):
                             raise ValueError('Runtime image contains private files or build sources.')
                         prefix = 'app/public/build/'

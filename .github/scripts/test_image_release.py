@@ -34,7 +34,7 @@ class ImageReleaseTest(unittest.TestCase):
         self.oci(self.bundle, 'php')
         self.oci(self.bundle, 'nginx')
 
-    def oci(self, directory, role, sha=None, version=None, asset=b'compiled-public-js', extra=None, entrypoint=None):
+    def oci(self, directory, role, sha=None, version=None, asset=b'compiled-public-js', extra=None, entrypoint=None, env=None, diff_id=None):
         sha = sha or self.sha
         version = version or self.version
         release = {
@@ -55,8 +55,8 @@ class ImageReleaseTest(unittest.TestCase):
             'User': 'www-data:www-data' if role == 'php' else 'nginx:nginx',
             'Entrypoint': entrypoint or ['/usr/local/bin/app-entrypoint' if role == 'php' else '/usr/local/bin/tls-entrypoint'],
             'Labels': {'org.opencontainers.image.revision': sha, 'org.opencontainers.image.version': version},
-            'Env': ['APP_ENV=production'],
-        }, 'rootfs': {'type': 'layers', 'diff_ids': [digest(buffer.getvalue())]}})
+            'Env': ['APP_ENV=production'] if env is None else env,
+        }, 'rootfs': {'type': 'layers', 'diff_ids': [diff_id or digest(buffer.getvalue())]}})
         descriptor = lambda content, media: {'digest': digest(content), 'size': len(content), 'mediaType': media}
         manifest_bytes = encoded({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
             'config': descriptor(config_bytes, 'application/vnd.oci.image.config.v1+json'),
@@ -110,6 +110,14 @@ class ImageReleaseTest(unittest.TestCase):
         for case in [{'entrypoint': ['nginx']}, {'extra': {'app/.env': b'PRIVATE_ENV_CANARY'}}]:
             with self.subTest(case=case):
                 self.oci(self.bundle, 'nginx', **case)
+                with self.assertRaises(ValueError):
+                    create_manifest(self.bundle, self.source, self.sha, self.version)
+
+    def test_rejects_runtime_node_baked_vite_values_and_corrupt_rootfs(self):
+        cases = [{'extra': {'usr/local/bin/node': b'build-only binary'}}, {'env': ['VITE_PRIVATE_TOKEN=private']}, {'diff_id': 'sha256:' + 'f' * 64}]
+        for case in cases:
+            with self.subTest(case=case):
+                self.oci(self.bundle, 'php', **case)
                 with self.assertRaises(ValueError):
                     create_manifest(self.bundle, self.source, self.sha, self.version)
 
