@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Yaml\Yaml;
 
@@ -24,6 +25,27 @@ test('runtime benchmark requires manual dispatch and preserves equal resource li
         ->not->toContain('/app/storage/framework:uid=33,gid=33,mode=0750')
         ->and($compose['services']['nginx']['cpus'])->toBe(0.5)
         ->and($compose['services']['nginx']['mem_limit'])->toBe('128m');
+});
+
+test('Octane benchmark adapts the real split Nginx configuration to HTTP without changing routing guards', function () {
+    $files = new Filesystem;
+    $directory = sys_get_temp_dir().'/runtime-benchmark-proxy-'.bin2hex(random_bytes(8));
+    $files->makeDirectory($directory, 0700);
+    foreach (['nginx.conf', 'http.conf', 'application.conf'] as $name) {
+        $files->copy(base_path('docker/nginx/'.$name), $directory.'/'.$name);
+    }
+
+    try {
+        $result = Process::path(base_path())->run(['sh', 'tests/Docker/runtime-benchmark-proxy.sh', $directory]);
+
+        expect($result->exitCode())->toBe(0);
+        expect($files->get($directory.'/nginx.conf'))->toBe($files->get(base_path('docker/nginx/nginx.conf')));
+        expect($files->get($directory.'/http.conf'))->toContain('server php:8000 resolve;')->not->toContain('server php:9000');
+        expect($files->get($directory.'/application.conf'))->toContain('proxy_pass http://php_fpm$request_uri;', 'proxy_set_header Host $http_host;', 'location /build/assets/', 'return 404;')
+            ->not->toContain('fastcgi_', 'fastcgi_pass');
+    } finally {
+        $files->deleteDirectory($directory);
+    }
 });
 
 test('runtime benchmark rejects missing images before allocating disposable resources', function () {

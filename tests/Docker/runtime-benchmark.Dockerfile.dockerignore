@@ -6,6 +6,7 @@
 !tests/
 !tests/Docker/
 !tests/Docker/runtime-benchmark.fpm.conf
+!tests/Docker/runtime-benchmark-proxy.sh
 
 **/.env*
 **/auth.json

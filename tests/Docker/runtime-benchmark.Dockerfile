@@ -44,9 +44,7 @@ CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8000", "--
 
 FROM ${NGINX_IMAGE} AS octane-proxy
 USER root
-RUN sed -i \
-    -e 's/server php:9000 resolve;/server php:8000 resolve;/' \
-    -e '/include \/etc\/nginx\/fastcgi_params;/,/fastcgi_pass php_fpm;/c\            proxy_set_header Host $http_host;\n            proxy_set_header X-Forwarded-Proto $scheme;\n            proxy_pass http://php_fpm$request_uri;' \
-    /etc/nginx/nginx.conf
+COPY tests/Docker/runtime-benchmark-proxy.sh /tmp/runtime-benchmark-proxy.sh
+RUN sh /tmp/runtime-benchmark-proxy.sh /etc/nginx && rm /tmp/runtime-benchmark-proxy.sh
 USER nginx:nginx
 RUN nginx -t

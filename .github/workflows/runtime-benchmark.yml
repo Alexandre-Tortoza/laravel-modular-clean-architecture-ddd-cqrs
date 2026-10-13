@@ -7,6 +7,8 @@ on:
             - '.github/workflows/runtime-benchmark.yml'
             - 'tests/Docker/runtime-benchmark*'
             - 'tests/Feature/RuntimeBenchmarkWorkflowTest.php'
+            - 'Dockerfile'
+            - 'docker/nginx/**'
     workflow_dispatch:
 
 permissions:
@@ -22,6 +24,7 @@ jobs:
             - name: Check the opt-in harness syntax
               run: |
                   bash -n tests/Docker/runtime-benchmark.sh
+                  sh -n tests/Docker/runtime-benchmark-proxy.sh
                   python -c 'import ast, pathlib; ast.parse(pathlib.Path("tests/Docker/runtime-benchmark-client.py").read_text())'
                   PYTHONDONTWRITEBYTECODE=1 python tests/Docker/runtime-benchmark-metrics-test.py
     benchmark:
