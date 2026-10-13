@@ -1,8 +1,11 @@
 import importlib.util
+import contextlib
+import io
 import os
 import json
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -57,6 +60,17 @@ class NativeInertiaClient(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     browser.verify(7, {})
                 request.assert_called_once_with('/settings/teams', inertia=True)
+
+
+class PrivateCliBoundary(unittest.TestCase):
+    def test_subprocess_timeout_keeps_nonzero_status_without_printing_password_arguments(self):
+        output = io.StringIO()
+        failure = subprocess.TimeoutExpired(['curl', '--data-urlencode', 'password=privatefixturecanary'], 15)
+        with patch.object(cycle, 'main', side_effect=failure), contextlib.redirect_stderr(output):
+            self.assertEqual(cycle.cli(), 1)
+        self.assertEqual(output.getvalue(), 'Disposable release cycle failed; private command diagnostics withheld.\n')
+        self.assertNotIn('privatefixturecanary', output.getvalue())
+        self.assertNotIn('--data-urlencode', output.getvalue())
 
 
 if __name__ == '__main__':

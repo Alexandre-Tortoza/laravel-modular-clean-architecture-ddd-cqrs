@@ -19,7 +19,8 @@ git archive "$previous_revision" | tar -x -C "$source_root/previous"
 git archive "$revision" | tar -x -C "$source_root/current"
 
 # Only the disposable N+1 build receives this committed additive migration.
-# No application's tracked migration or production Dockerfile is modified.
+# The recorded Git SHA is the base context plus this test-only overlay, not
+# an attestation of an unmodified production source tree. Original files stay intact.
 cp tests/Docker/migration-fixtures/2030_01_01_000001_expand_release_probe.php "$source_root/current/docker/php/cycle-expand.php"
 cat >>"$source_root/current/Dockerfile" <<'EOF'
 

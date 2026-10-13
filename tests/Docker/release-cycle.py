@@ -243,6 +243,8 @@ def main():
                 raise ValueError('Recovery changed completed migrations, uploads or stable private inputs')
             checkpoints.append(dict(phase='failed readiness recovered', release=b, migrations=runtime.migrations, failed_phase=failed['pending']['phase'], completed_at=recovered['completed_at']))
             evidence = dict(schema_version=1, status='passed', checkpoints=checkpoints, checks=['true-distinct-OCI-digests', 'running-web-worker-scheduler-exact-image-configs', 'additive-schema-preserved', 'native-HTTPS-login-original-session', 'Teams-data-membership-upload-persistence', 'all-HTTP-asset-hashes', 'actual-worker-job-consumption', 'singleton-scheduler', 'exact-readiness-failure-phase', 'opt-in-recovery-no-DDL', 'stable-APP_KEY-private-inputs', 'owned-cleanup'], limitations=['disposable-local-simulated-versions', 'no-AWS-ECR-SSM', 'no-production-cutover', 'no-zero-downtime-proof', 'no-general-schema-reversibility', 'mail-array-no-external-delivery'])
+            evidence['context_overlays'] = [dict(base_git_revision=b['source_revision'], release_version=b['version'], fixture_file='tests/Docker/migration-fixtures/2030_01_01_000001_expand_release_probe.php', fixture_sha256=hashlib.sha256((ROOT / 'tests/Docker/migration-fixtures/2030_01_01_000001_expand_release_probe.php').read_bytes()).hexdigest(), destination='/app/database/migrations/2030_01_01_000001_expand_release_probe.php', derived_build_target='cycle-runtime')]
+            evidence['limitations'].append('N+1-base-Git-plus-test-overlay-not-production-source-attestation')
         finally:
             runtime.compose_command(a, ['down', '--volumes', '--timeout', '30'])
             for arguments in [['docker', 'ps', '-aq'], ['docker', 'volume', 'ls', '-q'], ['docker', 'network', 'ls', '-q']]:
@@ -252,5 +254,14 @@ def main():
         print('Native N -> N+1 -> N application cycle and readiness-failure recovery passed; no AWS operation.')
 
 
+def cli():
+    try:
+        main()
+        return 0
+    except Exception:
+        print('Disposable release cycle failed; private command diagnostics withheld.', file=sys.stderr)
+        return 1
+
+
 if __name__ == '__main__':
-    main()
+    sys.exit(cli())
