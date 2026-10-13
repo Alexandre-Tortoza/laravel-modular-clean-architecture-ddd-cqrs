@@ -79,3 +79,18 @@ USER www-data:www-data
 EXPOSE 9000
 STOPSIGNAL SIGQUIT
 CMD ["php-fpm", "--nodaemonize"]
+
+FROM nginx:1.28.2-alpine@sha256:5b4900b042ccfa8b0a73df622c3a60f2322faeb2be800cbee5aa7b44d241649e AS nginx
+COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY --from=assets /app/public /app/public
+RUN rm -f /etc/nginx/conf.d/default.conf \
+    && mkdir -p /tmp/nginx/client-body /tmp/nginx/fastcgi \
+    && chown -R nginx:nginx /tmp/nginx \
+    && chmod 0750 /tmp/nginx /tmp/nginx/client-body /tmp/nginx/fastcgi \
+    && find /app/public -type d -exec chmod 0755 {} + \
+    && find /app/public -type f -exec chmod 0644 {} +
+USER nginx:nginx
+EXPOSE 8080
+STOPSIGNAL SIGQUIT
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
