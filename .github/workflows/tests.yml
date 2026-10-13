@@ -269,6 +269,28 @@ jobs:
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM users')" = 0
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM teams')" = 0
 
+      - name: Verify Redis is opt-in with independent driver selection
+        run: |
+          test -z "$(docker compose ps --services --filter status=running | grep '^redis$' || true)"
+          docker compose --profile redis up --detach --wait --wait-timeout 120 redis
+          test "$(docker compose --profile redis exec -T redis redis-cli ping)" = PONG
+          for purpose in CACHE_STORE SESSION_DRIVER QUEUE_CONNECTION; do
+            docker compose exec -T -e "$purpose=redis" -e "PURPOSE=$purpose" laravel.test php -r '
+              require "vendor/autoload.php";
+              $app = require "bootstrap/app.php";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $drivers = ["CACHE_STORE" => "cache.default", "SESSION_DRIVER" => "session.driver", "QUEUE_CONNECTION" => "queue.default"];
+              foreach ($drivers as $purpose => $key) {
+                  if (config($key) !== ($purpose === getenv("PURPOSE") ? "redis" : "database")) {
+                      exit(1);
+                  }
+              }
+            '
+          done
+          docker compose --profile redis stop redis
+          curl --fail http://localhost:8000/up
+          curl --fail http://localhost:8000/login > /dev/null
+
       - name: Show container diagnostics on failure
         if: failure()
         run: |
@@ -277,4 +299,4 @@ jobs:
 
       - name: Stop disposable CI containers
         if: always()
-        run: docker compose down
+        run: docker compose --profile redis down
