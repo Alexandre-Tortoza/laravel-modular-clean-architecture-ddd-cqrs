@@ -1,0 +1,25 @@
+name: PostgreSQL application role contract
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - infra/aws/templates/rds-application-role.sql
+      - tests/Docker/rds-role-smoke.sh
+      - .github/workflows/rds-role-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application-role:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise the operator SQL only against disposable PostgreSQL
+        run: bash tests/Docker/rds-role-smoke.sh

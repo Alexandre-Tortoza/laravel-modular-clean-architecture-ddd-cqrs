@@ -1,0 +1,93 @@
+# Complete EC2 release runtime. Configuration comes from the reviewed host contract.
+x-php: &php
+    image: '${PHP_IMAGE:?Select the approved PHP OCI digest}'
+    env_file:
+        - path: '${RUNTIME_ENV_FILE:?Select the one private host runtime file}'
+          format: raw
+    environment:
+        APP_URL: 'https://${TLS_DOMAIN:?Select the approved TLS hostname}'
+        SESSION_SECURE_COOKIE: 'true'
+        TRUSTED_PROXIES: ''
+    volumes:
+        - type: bind
+          source: '${UPLOAD_DIRECTORY:?Select the retained upload EBS mount}'
+          target: /app/storage/app
+          bind: { create_host_path: false }
+        - type: bind
+          source: '${DB_CA_BUNDLE:?Select the trusted RDS CA file}'
+          target: /run/database-ca/rds.pem
+          read_only: true
+          bind: { create_host_path: false }
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 90s
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    networks: [app]
+    logging:
+        driver: json-file
+        options: { max-size: '10m', max-file: '3' }
+
+services:
+    php:
+        <<: *php
+    nginx:
+        image: '${NGINX_IMAGE:?Select the approved HTTPS Nginx OCI digest}'
+        environment:
+            TLS_DOMAIN: '${TLS_DOMAIN:?Select the approved TLS hostname}'
+            TLS_CERTIFICATE_MECHANISM: '${TLS_CERTIFICATE_MECHANISM:?Select the approved certificate mechanism}'
+        volumes:
+            - type: bind
+              source: '${TLS_CERTIFICATE_DIRECTORY:?Select the restricted certificate directory}'
+              target: /run/tls
+              read_only: true
+              bind: { create_host_path: false }
+            - type: bind
+              source: '${TLS_ACME_WEBROOT:?Select the restricted challenge directory}'
+              target: /run/acme
+              read_only: true
+              bind: { create_host_path: false }
+        ports:
+            - '${TLS_BIND_IPV4:?Select the approved host bind address}:80:8081'
+            - '${TLS_BIND_IPV4:?Select the approved host bind address}:443:8443'
+        restart: unless-stopped
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 30s
+        networks: [app]
+        logging:
+            driver: json-file
+            options: { max-size: '10m', max-file: '3' }
+    worker:
+        <<: *php
+        command:
+            [
+                'php',
+                'artisan',
+                'queue:work',
+                '--sleep=3',
+                '--tries=3',
+                '--timeout=60',
+                '--max-time=3600',
+                '--no-interaction',
+            ]
+    scheduler:
+        <<: *php
+        command: ['php', 'artisan', 'schedule:work', '--no-interaction']
+        deploy: { replicas: 1 }
+    migration:
+        <<: *php
+        profiles: [release]
+        restart: 'no'
+        environment:
+            APP_URL: 'https://${TLS_DOMAIN:?Select the approved TLS hostname}'
+            SESSION_SECURE_COOKIE: 'true'
+            TRUSTED_PROXIES: ''
+            RELEASE_REVISION: '${SOURCE_REVISION:?Select the approved full source SHA}'
+            RELEASE_MIGRATION_LOCK_TIMEOUT: '60'
+        command: ['php', 'docker/php/release-migrate.php']
+
+networks:
+    app:
+        driver: bridge

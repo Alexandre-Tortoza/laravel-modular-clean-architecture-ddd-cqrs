@@ -1,0 +1,28 @@
+name: Direct Nginx HTTPS smoke
+
+on:
+    pull_request:
+        branches: [dev]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    https:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+            - name: Verify offline certificate installation
+              run: python3 tests/Infrastructure/test_https_certificates.py
+            - name: Build immutable production images without publication
+              run: |
+                  revision="$(git rev-parse HEAD)"
+                  docker build --build-arg "SOURCE_REVISION=$revision" --target runtime --tag laravel-php:https-smoke .
+                  docker build --build-arg "SOURCE_REVISION=$revision" --target nginx-tls --tag laravel-nginx:https-smoke .
+            - name: Verify TLS, sessions, renewal and HTTP/private boundaries
+              run: bash tests/Docker/https-smoke.sh laravel-php:https-smoke laravel-nginx:https-smoke "$(git rev-parse HEAD)"
