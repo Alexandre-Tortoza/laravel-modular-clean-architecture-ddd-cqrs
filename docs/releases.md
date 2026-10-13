@@ -57,6 +57,8 @@ Never choose an uncompleted pending image as the recovery target. Supply the sel
 
 Rollback holds the same host lock, checks history/request/configuration and persistent input hashes, pulls target digests, drains background processes, starts the retained web pair, validates HTTPS readiness, reloads its worker and singleton scheduler, and repeats readiness/process/public-asset smoke. It commits the completion timestamp and rollback/recovery identity only after these pass. An exact completed retry is read-only. Missing historical configuration, stale/tampered receipts, incompatible schema or changed persistent inputs fail closed.
 
+The runtime-env fingerprint checks byte stability within this rollback operation. Deployment receipts do not attest the selected release's historical APP_KEY/env bytes; preserving those original values remains an operator precondition.
+
 If rollback itself is interrupted, preserve pending and completed receipts. Inspect actual containers, SSM invocation and data privately, establish compatibility and arrange a separately reviewed manual recovery; do not delete state/volumes to make a retry pass. Re-run the authenticated/queue/data smoke after recovery and record actual limits.
 
 ## Expand → migrate → contract
