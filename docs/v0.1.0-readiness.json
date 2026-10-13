@@ -174,8 +174,8 @@
     "inherited_after_prepared_base": [
         {
             "issue": 60,
-            "source_sha": "84161339e55a84077f0ae59061cc17224646d890",
-            "scope": "Documentation only: executor checks versus mandatory operator functional smoke; no covered PHP/input change."
+            "source_sha": "b1e1f98e3c1f7710a69b8d75f062e93da9be0bb6",
+            "scope": "Documentation only: executor versus operator smoke; rollback fingerprint proves only before/after the same operation, not historical APP_KEY bytes. No covered PHP/input change."
         }
     ]
 }
