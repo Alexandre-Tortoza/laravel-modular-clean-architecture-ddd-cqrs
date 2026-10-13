@@ -9,6 +9,29 @@ import sys
 
 SECRET_NAMES = re.compile(r"(?:password|secret_string|secret_key|access_key|app_key|auth_token)$", re.I)
 TOKENS = re.compile(r'#[^\n]*|//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z_0-9]*|[^\s]', re.S)
+GLOBAL_ACTIONS = {'ecr:GetAuthorizationToken', 'ssm:UpdateInstanceInformation',
+                  'ec2:DescribeVolumes', 'ec2:DescribeSnapshots',
+                  'ssmmessages:CreateControlChannel', 'ssmmessages:CreateDataChannel',
+                  'ssmmessages:OpenControlChannel', 'ssmmessages:OpenDataChannel'}
+
+
+def validate_iam(policy):
+    errors = []
+    for statement in policy.get('Statement', []):
+        if statement.get('Effect') != 'Allow':
+            continue
+        actions, resources = statement.get('Action', []), statement.get('Resource', [])
+        actions = [actions] if isinstance(actions, str) else actions
+        resources = [resources] if isinstance(resources, str) else resources
+        if statement.get('NotResource') or not resources:
+            errors.append('Allow IAM policy must name resources')
+        for action in actions:
+            if ('*' in action or '?' in action) or (any(resource == '*' for resource in resources) and action not in GLOBAL_ACTIONS):
+                errors.append('Excessive wildcard IAM permission is forbidden')
+            if action.startswith('secretsmanager:') or action == 'kms:Decrypt':
+                if any('*' in resource or '?' in resource for resource in resources):
+                    errors.append('Runtime secret access requires exact resource ARNs')
+    return errors
 
 
 def blocks(source):
@@ -43,6 +66,8 @@ def validate_plan(plan):
         unknown = change.get("after_unknown", {})
         resource_type = resource["type"]
         address = resource["address"]
+        if resource_type in {'aws_iam_role_policy', 'aws_iam_policy'} and isinstance(values.get('policy'), str):
+            errors.extend(f'{address}: {error}' for error in validate_iam(json.loads(values['policy'])))
         if resource_type.startswith("aws_ecs_") or resource_type in {"aws_lb", "aws_nat_gateway", "aws_security_group_rule"}:
             errors.append(f"{address}: resource outside the reviewed EC2 topology")
         if resource_type == "aws_db_instance" and values.get("publicly_accessible") is not False:
@@ -68,10 +93,25 @@ def validate_plan(plan):
 def validate_sources(directory):
     errors = []
     for path in sorted(pathlib.Path(directory).rglob("*")):
-        if ".terraform" in path.parts or not path.is_file() or path.suffix not in {".tf", ".hcl", ".sh"}:
+        tfvars_json = path.name.endswith(('.tfvars.json', '.tfvars.json.example'))
+        if ".terraform" in path.parts or not path.is_file() or (path.suffix not in {".tf", ".hcl", ".sh", '.tfvars'} and not tfvars_json):
             continue
         source = path.read_text()
         label = str(path.relative_to(directory))
+        if tfvars_json:
+            def inspect(value):
+                if isinstance(value, dict):
+                    for name, child in value.items():
+                        if SECRET_NAMES.search(name) and isinstance(child, str) and child:
+                            errors.append(f'{label}: literal sensitive attribute {name} is forbidden')
+                        inspect(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        inspect(child)
+            try:
+                inspect(json.loads(source))
+            except ValueError:
+                errors.append(f'{label}: invalid tfvars JSON')
         for match in re.finditer(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*=\s*"((?:\\.|[^"\\])*)"', source):
             if SECRET_NAMES.search(match[1]) and match[2] and "${" not in match[2]:
                 errors.append(f"{label}: literal sensitive attribute {match[1]} is forbidden")

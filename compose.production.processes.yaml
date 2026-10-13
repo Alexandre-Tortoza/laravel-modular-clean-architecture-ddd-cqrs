@@ -3,7 +3,8 @@
 x-process: &process
     image: '${PHP_IMAGE:?Select the immutable PHP image reference}'
     env_file:
-        - '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+        - path: '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+          format: raw
     volumes: ['app-storage:/app/storage/app']
     restart: unless-stopped
     init: true

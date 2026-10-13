@@ -15,6 +15,28 @@ def planned(resource_type, values, unknown=None):
 
 
 class InfrastructurePolicyTest(unittest.TestCase):
+    def test_json_and_hcl_tfvars_cannot_hide_runtime_secrets(self):
+        for filename, source in [('terraform.tfvars.json', '{"nested":{"DB_PASSWORD":"canary-secret"}}'),
+                                 ('fixture.tfvars', 'APP_KEY = "canary-secret"'),
+                                 ('fixture.tfvars.json.example', '{"APP_KEY":"canary-secret"}')]:
+            with tempfile.TemporaryDirectory() as directory:
+                (pathlib.Path(directory) / filename).write_text(source)
+                errors = validate_sources(directory)
+                self.assertTrue(errors)
+                self.assertNotIn('canary-secret', str(errors))
+
+    def test_iam_secret_wildcards_and_administration_are_rejected(self):
+        for action, resource in [('secretsmanager:GetSecretValue', '*'), ('kms:Decrypt', '*'),
+                                 ('secretsmanager:GetSecretValue', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:*'),
+                                 ('iam:*', '*')]:
+            policy = {'Statement': [{'Effect': 'Allow', 'Action': [action], 'Resource': [resource]}]}
+            self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(policy)})))
+
+    def test_required_global_channel_and_registry_token_actions_remain_allowed(self):
+        policy = {'Statement': [{'Effect': 'Allow', 'Action': ['ecr:GetAuthorizationToken', 'ssm:UpdateInstanceInformation'], 'Resource': ['*']},
+                                {'Effect': 'Deny', 'Action': ['secretsmanager:GetSecretValue'], 'NotResource': ['arn:fixture:exact']} ]}
+        self.assertEqual(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(policy)})), [])
+
     def test_explicit_https_ingress_is_allowed(self):
         self.assertEqual(validate_plan(planned("aws_vpc_security_group_ingress_rule", {
             "cidr_ipv4": "0.0.0.0/0", "ip_protocol": "tcp", "from_port": 443, "to_port": 443})), [])
