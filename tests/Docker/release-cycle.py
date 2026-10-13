@@ -107,6 +107,17 @@ def verify_application(runtime, browser, selected, owner_id, expanded):
     runtime.ready(selected)
     runtime.processes_ready(selected)
     runtime.smoke(selected)
+    manifest = runtime.bundles[selected['source_revision']]['manifest']
+    for service in ('php', 'nginx', 'worker', 'scheduler'):
+        container = runtime.compose_command(selected, ['ps', '-q', service]).decode().strip()
+        information = json.loads(runtime.command(['docker', 'inspect', container]))[0]
+        role = 'nginx' if service == 'nginx' else 'php'
+        if information['Image'] != manifest['images'][role]['config_digest']:
+            raise ValueError('A running process does not use the exact retained OCI configuration')
+        if service != 'nginx':
+            uploads = [mount for mount in information['Mounts'] if mount['Destination'] == '/app/storage/app']
+            if len(uploads) != 1 or uploads[0]['Source'] != runtime.contract['compose_environment']['UPLOAD_DIRECTORY']:
+                raise ValueError('A process lost the shared persistent upload fixture')
     browser.verify(owner_id, selected)
     state = php_fixture(runtime, selected, 'verify')
     if any(state[key] != value for key, value in dict(users=2, teams=3, memberships=3, owner_id=owner_id, persisted=True, session_exists=True, expanded=expanded, failed_jobs=0).items()):
@@ -161,6 +172,11 @@ def main():
         runtime_file.write_text('APP_ENV=production\nAPP_DEBUG=false\nAPP_KEY=base64:' + base64.b64encode(os.urandom(32)).decode() + '\nAPP_URL=https://' + domain + '\nDB_CONNECTION=pgsql\nDB_HOST=pgsql\nDB_PORT=5432\nDB_DATABASE=' + database + '\nDB_USERNAME=fixture\nDB_PASSWORD=' + database_password + '\nDB_SSLMODE=disable\nSESSION_DRIVER=database\nCACHE_STORE=database\nQUEUE_CONNECTION=database\nSESSION_SECURE_COOKIE=true\nLOG_CHANNEL=stderr\nMAIL_MAILER=array\nSMOKE_TEST_PASSWORD=' + password + '\n')
         runtime_file.chmod(0o600)
         input_hash = hashlib.sha256(runtime_file.read_bytes()).hexdigest()
+        upload = directory / 'uploads/private/retained-cycle-data'
+        upload.write_bytes(os.urandom(64))
+        upload.chmod(0o600)
+        os.chown(upload, 33, 33)
+        upload_hash = hashlib.sha256(upload.read_bytes()).hexdigest()
         overlay = directory / 'fixture.yaml'
         overlay.write_text('services:\n  pgsql:\n    image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4\n    user: postgres\n    environment:\n      POSTGRES_DB: ' + database + '\n      POSTGRES_USER: fixture\n      POSTGRES_PASSWORD: ' + database_password + '\n    networks: [app]\n    volumes: ["fixture-db:/var/lib/postgresql/data"]\n    healthcheck:\n      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "fixture"]\n      interval: 2s\n      timeout: 5s\n      retries: 30\nvolumes:\n  fixture-db:\n')
         overlay.chmod(0o600)
@@ -214,10 +230,10 @@ def main():
             if recovered['release'] != b or runtime.migrations != 4:
                 raise ValueError('Failed-promotion recovery reran migration or chose pending')
             final_state = verify_application(runtime, browser, b, owner_id, True)
-            if final_state['migration_receipts'] != 2 or hashlib.sha256(runtime_file.read_bytes()).hexdigest() != input_hash:
-                raise ValueError('Recovery changed completed migrations or stable private inputs')
+            if final_state['migration_receipts'] != 2 or hashlib.sha256(runtime_file.read_bytes()).hexdigest() != input_hash or hashlib.sha256(upload.read_bytes()).hexdigest() != upload_hash:
+                raise ValueError('Recovery changed completed migrations, uploads or stable private inputs')
             checkpoints.append(dict(phase='failed readiness recovered', release=b, migrations=runtime.migrations, failed_phase=failed['pending']['phase'], completed_at=recovered['completed_at']))
-            evidence = dict(schema_version=1, status='passed', checkpoints=checkpoints, checks=['true-distinct-OCI-digests', 'additive-schema-preserved', 'native-HTTPS-login-original-session', 'Teams-data-membership-persistence', 'all-HTTP-asset-hashes', 'actual-worker-job-consumption', 'singleton-scheduler', 'exact-readiness-failure-phase', 'opt-in-recovery-no-DDL', 'stable-APP_KEY-private-inputs', 'owned-cleanup'], limitations=['disposable-local-simulated-versions', 'no-AWS-ECR-SSM', 'no-production-cutover', 'no-zero-downtime-proof', 'no-general-schema-reversibility', 'mail-array-no-external-delivery'])
+            evidence = dict(schema_version=1, status='passed', checkpoints=checkpoints, checks=['true-distinct-OCI-digests', 'running-web-worker-scheduler-exact-image-configs', 'additive-schema-preserved', 'native-HTTPS-login-original-session', 'Teams-data-membership-upload-persistence', 'all-HTTP-asset-hashes', 'actual-worker-job-consumption', 'singleton-scheduler', 'exact-readiness-failure-phase', 'opt-in-recovery-no-DDL', 'stable-APP_KEY-private-inputs', 'owned-cleanup'], limitations=['disposable-local-simulated-versions', 'no-AWS-ECR-SSM', 'no-production-cutover', 'no-zero-downtime-proof', 'no-general-schema-reversibility', 'mail-array-no-external-delivery'])
         finally:
             runtime.compose_command(a, ['down', '--volumes', '--timeout', '30'])
             for arguments in [['docker', 'ps', '-aq'], ['docker', 'volume', 'ls', '-q'], ['docker', 'network', 'ls', '-q']]:
