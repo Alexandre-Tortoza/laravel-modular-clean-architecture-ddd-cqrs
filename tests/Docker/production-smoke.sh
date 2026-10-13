@@ -190,10 +190,23 @@ for attempt in {1..40}; do
     sleep 0.25
 done
 curl --silent --fail --max-time 5 "$base_url/up" >/dev/null
+test "$(request --header 'X-Inertia: true' --header "X-Inertia-Version: $asset_version" "$base_url/settings/teams")" = 200
+python - "$temporary_directory/response.json" "$temporary_directory/fixture.json" <<'PY'
+import json, pathlib, sys
+page, fixture = [json.loads(pathlib.Path(path).read_text()) for path in sys.argv[1:]]
+assert page['props']['auth']['user']['id'] == fixture['owner_id']
+assert len(page['props']['teams']) == 2
+PY
 
 stage=graceful-shutdown
 "${compose[@]}" stop --timeout 30 php nginx pgsql
 for service in php nginx pgsql; do
     test "$(docker inspect --format '{{.State.ExitCode}}' "$("${compose[@]}" ps --all -q "$service")")" = 0
 done
+stage=owned-resource-cleanup
+"${compose[@]}" down --volumes --timeout 30
+started=false
+test -z "$(docker ps --all --quiet --filter "label=com.docker.compose.project=$project")"
+test -z "$(docker volume ls --quiet --filter "label=com.docker.compose.project=$project")"
+test -z "$(docker network ls --quiet --filter "label=com.docker.compose.project=$project")"
 printf '%s\n' 'Production smoke passed: immutable non-root images, private PostgreSQL 16, migrations, secure session/CSRF login, Inertia, Teams isolation/write, versioned assets, APP_KEY/upstream failure detection and graceful cleanup.'
