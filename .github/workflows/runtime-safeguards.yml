@@ -1,0 +1,40 @@
+name: Production runtime safeguards
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - compose.production.smoke.yaml
+      - tests/Docker/runtime-smoke.sh
+      - tests/Docker/production-fixture.php
+      - .github/workflows/runtime-safeguards.yml
+      - app/**
+      - bootstrap/**
+      - config/**
+      - routes/**
+      - composer.lock
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-safeguards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build production images
+        run: |
+          revision="$(git rev-parse HEAD)"
+          docker build --build-arg "SOURCE_REVISION=$revision" --target runtime --tag laravel-php:runtime-smoke .
+          docker build --build-arg "SOURCE_REVISION=$revision" --target nginx --tag laravel-nginx:runtime-smoke .
+      - name: Verify health and retained state
+        run: bash tests/Docker/runtime-smoke.sh laravel-php:runtime-smoke laravel-nginx:runtime-smoke
