@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 
+use function count;
 use function in_array;
 use function preg_match;
 use function str_replace;
@@ -39,19 +40,32 @@ class MakeModule extends Command
         $providerClass = 'App\\Modules\\'.$name.'\\Infrastructure\\Providers\\'.$name.'ServiceProvider';
         $providers = require $providersPath;
 
-        if (! is_array($providers) || preg_match('/\breturn\s*\[/', $contents) !== 1) {
-            $this->error('Expected a return [...] list in bootstrap/providers.php. No files were changed.');
+        $tokens = array_values(array_filter(\PhpToken::tokenize($contents), fn (\PhpToken $token): bool => ! $token->isIgnorable()));
+        $returnTokens = array_filter($tokens, fn (\PhpToken $token): bool => $token->id === T_RETURN);
+
+        if (! is_array($providers) || count($returnTokens) !== 1) {
+            $this->error('Expected one literal return [...] list in bootstrap/providers.php. No files were changed.');
+
+            return self::FAILURE;
+        }
+
+        $returnIndex = array_key_first($returnTokens);
+        $openingIndex = $returnIndex + 1;
+        if ($tokens[$openingIndex]->text !== '[') {
+            $this->error('Provider registration requires a literal array. No files were changed.');
 
             return self::FAILURE;
         }
 
         if (! in_array($providerClass, $providers, true)) {
-            $tokens = array_values(array_filter(\PhpToken::tokenize($contents), fn (\PhpToken $token): bool => ! $token->isIgnorable()));
-            $closingIndex = array_find_key(array_reverse($tokens, true), fn (\PhpToken $token): bool => $token->text === ']');
-            if ($closingIndex === null) {
-                $this->error('Provider registration requires a literal array. No files were changed.');
-
-                return self::FAILURE;
+            $closingIndex = $openingIndex;
+            $depth = 1;
+            while ($depth > 0) {
+                $depth += match ($tokens[++$closingIndex]->text) {
+                    '[' => 1,
+                    ']' => -1,
+                    default => 0,
+                };
             }
 
             $closingBracket = $tokens[$closingIndex];
