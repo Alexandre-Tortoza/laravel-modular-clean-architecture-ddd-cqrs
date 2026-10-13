@@ -1,7 +1,8 @@
 services:
     php:
         image: '${SMOKE_PHP_IMAGE:?Build the PHP production image first}'
-        env_file: ['${SMOKE_RUNTIME_ENV_FILE:?Use the disposable smoke runtime file}']
+        env_file:
+            ['${SMOKE_RUNTIME_ENV_FILE:?Use the disposable smoke runtime file}']
         depends_on:
             pgsql:
                 condition: service_healthy
