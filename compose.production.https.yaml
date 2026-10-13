@@ -3,9 +3,8 @@ services:
     php:
         image: '${PRODUCTION_PHP_IMAGE:?Use the approved immutable PHP image digest}'
         env_file:
-            [
-                '${PRODUCTION_RUNTIME_ENV_FILE:?Use the approved private runtime file}',
-            ]
+            - path: '${PRODUCTION_RUNTIME_ENV_FILE:?Use the approved private runtime file}'
+              format: raw
         environment:
             APP_URL: 'https://${TLS_DOMAIN:?Explicit approved TLS hostname}'
             SESSION_SECURE_COOKIE: 'true'
