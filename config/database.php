@@ -3,6 +3,10 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$redisTlsContext = in_array(parse_url((string) env('REDIS_URL'), PHP_URL_SCHEME), ['rediss', 'tls', 'valkeys'], true)
+    ? ['stream' => ['verify_peer' => true, 'verify_peer_name' => true]]
+    : null;
+
 return [
 
     /*
@@ -97,6 +101,10 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'sslrootcert' => env('DB_SSLROOTCERT'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => max(1, (int) env('DB_CONNECT_TIMEOUT', 3)),
+            ],
         ],
 
         'sqlsrv' => [
@@ -149,7 +157,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-'.Str::slug((string) env('APP_ENV', 'production')).'-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
@@ -160,6 +168,9 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'timeout' => (float) env('REDIS_CONNECT_TIMEOUT', 3),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 3),
+            'context' => $redisTlsContext,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -173,6 +184,9 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => (float) env('REDIS_CONNECT_TIMEOUT', 3),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 3),
+            'context' => $redisTlsContext,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

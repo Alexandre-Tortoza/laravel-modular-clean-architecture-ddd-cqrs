@@ -1,0 +1,35 @@
+name: Optional managed Valkey contract
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - infra/aws/valkey.tf
+      - infra/aws/tests/valkey.tftest.hcl
+      - infra/aws/scripts/runtime_secrets.py
+      - infra/aws/tests/test_runtime_secrets.py
+      - config/database.php
+      - tests/Docker/valkey-*
+      - tests/Feature/ManagedValkeyConfigurationTest.php
+      - Dockerfile
+      - composer.lock
+      - .github/workflows/managed-valkey-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valkey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate optional secret delivery without AWS
+        run: python3 infra/aws/tests/test_runtime_secrets.py
+      - name: Build the actual production PHP client
+        run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --target runtime --tag laravel-php:valkey-fixture .
+      - name: Verify real TLS RBAC and independent cache sessions and queues
+        run: python3 tests/Docker/valkey-smoke.py laravel-php:valkey-fixture
