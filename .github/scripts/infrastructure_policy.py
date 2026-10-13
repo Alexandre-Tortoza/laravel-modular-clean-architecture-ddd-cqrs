@@ -110,7 +110,7 @@ def validate_sources(directory):
             def inspect(value):
                 if isinstance(value, dict):
                     for name, child in value.items():
-                        if SECRET_NAMES.search(name) and isinstance(child, str) and child:
+                        if SECRET_NAMES.search(name) and (isinstance(child, str) and child or isinstance(child, list) and any(isinstance(item, str) and item for item in child)):
                             errors.append(f'{label}: literal sensitive attribute {name} is forbidden')
                         inspect(child)
                 elif isinstance(value, list):
@@ -120,7 +120,7 @@ def validate_sources(directory):
                 inspect(json.loads(source))
             except ValueError:
                 errors.append(f'{label}: invalid tfvars JSON')
-        for match in re.finditer(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*=\s*"((?:\\.|[^"\\])*)"', source):
+        for match in re.finditer(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*=\s*(?:\[\s*)?"((?:\\.|[^"\\])*)"', source):
             if SECRET_NAMES.search(match[1]) and match[2] and "${" not in match[2]:
                 errors.append(f"{label}: literal sensitive attribute {match[1]} is forbidden")
         if re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", source):

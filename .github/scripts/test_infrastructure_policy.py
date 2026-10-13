@@ -100,9 +100,10 @@ class InfrastructurePolicyTest(unittest.TestCase):
             self.assertNotIn("do-not-print-secret-canary", str(result))
 
     def test_valkey_literal_auth_token_and_password_variants_are_rejected_before_state(self):
-        for field in ['auth_token', 'auth_token_wo', 'passwords', 'passwords_wo']:
+        for field, value in [('auth_token', '"canary-private-credential"'), ('auth_token_wo', '"canary-private-credential"'),
+                             ('passwords', '["canary-private-credential"]'), ('passwords_wo', '["canary-private-credential"]')]:
             with tempfile.TemporaryDirectory() as directory:
-                (pathlib.Path(directory) / 'unsafe.tf').write_text(field + ' = "canary-private-credential"\n')
+                (pathlib.Path(directory) / 'unsafe.tf').write_text(field + ' = ' + value + '\n')
                 errors = validate_sources(directory)
                 self.assertTrue(errors, field)
                 self.assertNotIn('canary-private-credential', str(errors))
