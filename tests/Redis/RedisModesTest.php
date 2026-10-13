@@ -4,6 +4,7 @@ use Illuminate\Queue\DatabaseQueue;
 use Illuminate\Session\DatabaseSessionHandler;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
+use Symfony\Component\Process\Process;
 use Tests\Support\CachePrefixes;
 use Tests\TestCase;
 
@@ -65,16 +66,21 @@ test('Redis cached values stay isolated across applications and environments', f
 
 test('choosing an unavailable Redis cache throws explicitly and does not fall back to the database', function (): void {
     $key = 'unavailable-redis-probe';
-    config([
-        'database.redis.cache' => [
-            ...config('database.redis.cache'),
-            'host' => '127.0.0.1',
-            'port' => 1,
-            'timeout' => 0.1,
-            'max_retries' => 0,
-        ],
+    $process = new Process([PHP_BINARY, '-r', <<<'SCRIPT'
+require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+Illuminate\Support\Facades\Cache::put($argv[1], 'must not fall back', 60);
+SCRIPT
+        , $key,
+    ], base_path(), [
+        'REDIS_HOST' => '127.0.0.1',
+        'REDIS_PORT' => '1',
+        'REDIS_URL' => false,
     ]);
-    expect(fn () => Cache::put($key, 'must not fall back', 60))->toThrow(RedisException::class);
+    $process->run();
+    expect($process->isSuccessful())->toBeFalse();
+    expect($process->getErrorOutput().$process->getOutput())->toContain('RedisException');
     expect(Cache::store('database')->get($key))->toBeNull();
     expect(config('cache.default'))->toBe('redis');
 })->group('redis');
