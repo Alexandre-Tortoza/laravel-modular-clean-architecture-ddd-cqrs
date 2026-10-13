@@ -1,0 +1,11 @@
+[Unit]
+Description=Example cadence for the explicitly approved health observer
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=template-observe-health.service
+
+[Install]
+WantedBy=timers.target
