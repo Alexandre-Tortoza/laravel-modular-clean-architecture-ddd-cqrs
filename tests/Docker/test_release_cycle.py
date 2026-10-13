@@ -68,7 +68,7 @@ class PrivateCliBoundary(unittest.TestCase):
         failure = subprocess.TimeoutExpired(['curl', '--data-urlencode', 'password=privatefixturecanary'], 15)
         with patch.object(cycle, 'main', side_effect=failure), contextlib.redirect_stderr(output):
             self.assertEqual(cycle.cli(), 1)
-        self.assertEqual(output.getvalue(), 'Disposable release cycle failed; private command diagnostics withheld.\n')
+        self.assertEqual(output.getvalue(), 'Disposable release cycle failed; private command diagnostics withheld.\nFailed stage: disposable-runner-guard\n')
         self.assertNotIn('privatefixturecanary', output.getvalue())
         self.assertNotIn('--data-urlencode', output.getvalue())
 

@@ -16,6 +16,7 @@ import urllib.parse
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
+CYCLE_STAGE = 'disposable-runner-guard'
 spec = importlib.util.spec_from_file_location('retained_rollback_fixture', Path(__file__).with_name('rollback-smoke.py'))
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
@@ -150,6 +151,7 @@ def verify_application(runtime, browser, selected, owner_id, expanded):
 
 
 def main():
+    global CYCLE_STAGE
     require_disposable_runner(sys.argv[1:])
     if os.geteuid() != 0:
         raise ValueError('The disposable fixture requires native host file ownership')
@@ -203,22 +205,30 @@ def main():
         recovery = lambda current, previous, pending, target: dict(schema_version=1, expected_current=current, expected_previous=previous, expected_pending=pending, target=target, target_contract_sha256=contract_hash(contract), schema_compatible=True)
         checkpoints = []
         try:
+            CYCLE_STAGE = 'initial-N-promotion'
             runtime.compose_command(a, ['up', '-d', '--wait', '--wait-timeout', '90', 'pgsql'])
             deploy(request(a, None), contract, store, runtime)
+            CYCLE_STAGE = 'N-authentication-and-team-initialization'
             initialized = php_fixture(runtime, a, 'initialize', 'production-fixture.php')
             browser.initialize(password)
             owner_id = initialized['owner_id']
+            CYCLE_STAGE = 'N-application-assets-and-worker-verification'
             verify_application(runtime, browser, a, owner_id, False)
             checkpoints.append(dict(phase='N', release=a, migrations=runtime.migrations))
+            CYCLE_STAGE = 'N-plus-one-promotion'
             deploy(request(b, a), contract, store, runtime)
             php_fixture(runtime, b, 'expand')
+            CYCLE_STAGE = 'N-plus-one-application-assets-and-worker-verification'
             verify_application(runtime, browser, b, owner_id, True)
             checkpoints.append(dict(phase='N+1', release=b, migrations=runtime.migrations))
+            CYCLE_STAGE = 'rollback-to-N'
             receipt = rollback(recovery(b, a, None, 'previous'), store, runtime)
             if receipt['release'] != a or runtime.migrations != 2 or store.read()['pending'] is not None:
                 raise ValueError('Rollback reran migration or committed an incorrect release')
+            CYCLE_STAGE = 'restored-N-application-assets-and-worker-verification'
             verify_application(runtime, browser, a, owner_id, True)
             checkpoints.append(dict(phase='N restored', release=a, migrations=runtime.migrations, completed_at=receipt['completed_at']))
+            CYCLE_STAGE = 'forward-replay-and-readiness-failure'
             deploy(request(b, a), contract, store, runtime)
             runtime.break_database = True
             try:
@@ -235,9 +245,11 @@ def main():
                 raise ValueError('Unready candidate or background processes kept running')
             runtime.break_database = False
             runtime.compose_command(b, ['up', '-d', '--wait', '--wait-timeout', '90', 'pgsql'])
+            CYCLE_STAGE = 'failed-promotion-recovery'
             recovered = rollback(recovery(b, a, a, 'current'), store, runtime)
             if recovered['release'] != b or runtime.migrations != 4:
                 raise ValueError('Failed-promotion recovery reran migration or chose pending')
+            CYCLE_STAGE = 'recovered-current-application-verification'
             final_state = verify_application(runtime, browser, b, owner_id, True)
             if final_state['migration_receipts'] != 2 or hashlib.sha256(runtime_file.read_bytes()).hexdigest() != input_hash or hashlib.sha256(upload.read_bytes()).hexdigest() != upload_hash:
                 raise ValueError('Recovery changed completed migrations, uploads or stable private inputs')
@@ -260,6 +272,7 @@ def cli():
         return 0
     except Exception:
         print('Disposable release cycle failed; private command diagnostics withheld.', file=sys.stderr)
+        print('Failed stage: ' + CYCLE_STAGE, file=sys.stderr)
         return 1
 
 
