@@ -88,7 +88,7 @@ docker network create "$network" >/dev/null
 application_key="base64:$(openssl rand -base64 32)"
 docker run --detach --name "$php_container" --network "$network" --network-alias php \
     --cap-drop ALL --security-opt no-new-privileges \
-    --env "APP_KEY=$application_key" --env SESSION_DRIVER=file \
+    --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid --env SESSION_DRIVER=file \
     "$php_image" >/dev/null
 docker run --detach --name "$nginx_container" --network "$network" \
     --cap-drop ALL --security-opt no-new-privileges \

@@ -44,6 +44,56 @@ LAUNCHER));
         $generated = $run([PHP_BINARY, 'artisan', 'make:module', 'InventoryKit', '--no-interaction']);
         expect($generated->exitCode())->toBe(0, $generated->output().$generated->errorOutput());
         $module = $fixture.'/app/Modules/InventoryKit';
+        $usecase = $run([PHP_BINARY, 'artisan', 'make:module-usecase', 'InventoryKit', 'ArchiveEntries', '--test', '--no-interaction']);
+        expect($usecase->exitCode())->toBe(0, $usecase->output().$usecase->errorOutput());
+        $files->put($fixture.'/usecase.php', str_replace('{{ autoload }}', var_export($root.'/vendor/autoload.php', true), <<<'USECASE'
+<?php
+require {{ autoload }};
+$loader = new Composer\Autoload\ClassLoader;
+$loader->addPsr4('App\\', __DIR__.'/app');
+$loader->register(true);
+$command = new App\Modules\InventoryKit\Application\Commands\ArchiveEntries;
+if (!(new ReflectionClass($command))->isReadOnly()) {
+    exit(1);
+}
+$handler = new App\Modules\InventoryKit\Application\Commands\ArchiveEntriesHandler;
+try {
+    $handler->handle($command);
+    exit(2);
+} catch (LogicException $exception) {
+    echo $exception->getMessage();
+}
+USECASE));
+        $autoload = $run([PHP_BINARY, 'usecase.php']);
+        expect($autoload->exitCode())->toBe(0, $autoload->output().$autoload->errorOutput())
+            ->and($autoload->output())->toBe('Implement ArchiveEntries before executing it.');
+        $files->put($fixture.'/phpunit.xml', '<phpunit bootstrap="'.$root.'/vendor/autoload.php"><testsuites><testsuite name="Unit"><directory>tests/Unit</directory></testsuite></testsuites></phpunit>');
+        $pendingTest = Process::path($fixture)->env([...$environment, 'PAO_FORCE' => 'true'])->timeout(120)
+            ->run([PHP_BINARY, $root.'/vendor/bin/pest', '--configuration='.$fixture.'/phpunit.xml', '--no-coverage', '--colors=never', $fixture.'/tests/Unit/Modules/InventoryKit/ArchiveEntriesTest.php']);
+        expect($pendingTest->exitCode())->toBe(0, $pendingTest->output().$pendingTest->errorOutput());
+        $pendingResult = json_decode($pendingTest->output(), true, flags: JSON_THROW_ON_ERROR);
+        expect($pendingResult['tests'])->toBe(1)
+            ->and($pendingResult['passed'])->toBe(0)
+            ->and($pendingResult['skipped'])->toBe(1);
+        $fixtureDatabaseSeeder = $files->get($fixture.'/database/seeders/DatabaseSeeder.php');
+        $generatedSeeder = $run([PHP_BINARY, 'artisan', 'make:module-seeder', 'InventoryKit', 'DemoEntriesSeeder', '--no-interaction']);
+        expect($generatedSeeder->exitCode())->toBe(0, $generatedSeeder->output().$generatedSeeder->errorOutput());
+        $seederClass = 'App\\Modules\\InventoryKit\\Infrastructure\\Persistence\\Seeders\\DemoEntriesSeeder';
+        foreach (['local', 'testing', 'production', 'staging'] as $environmentName) {
+            $seeded = Process::path($fixture)->env([...$environment, 'APP_ENV' => $environmentName])->timeout(120)
+                ->run([PHP_BINARY, 'artisan', 'db:seed', '--class='.$seederClass, '--force', '--no-interaction']);
+            $isAllowed = in_array($environmentName, ['local', 'testing'], true);
+            expect($seeded->exitCode())->toBe($isAllowed ? 0 : 1, $seeded->output().$seeded->errorOutput());
+            if (! $isAllowed) {
+                expect($seeded->output().$seeded->errorOutput())->toContain('Demo data may only be seeded in local or testing environments.');
+            }
+        }
+        expect($files->get($fixture.'/database/seeders/DatabaseSeeder.php'))->toBe($fixtureDatabaseSeeder);
+        $seederPath = $module.'/Infrastructure/Persistence/Seeders/DemoEntriesSeeder.php';
+        $seederContents = $files->get($seederPath);
+        $seederRerun = $run([PHP_BINARY, 'artisan', 'make:module-seeder', 'InventoryKit', 'DemoEntriesSeeder', '--no-interaction']);
+        expect($seederRerun->exitCode())->toBe(1)
+            ->and($files->get($seederPath))->toBe($seederContents);
         $files->put($module.'/routes/web.php', <<<'ROUTES'
 <?php
 use Illuminate\Support\Facades\Route;
