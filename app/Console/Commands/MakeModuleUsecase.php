@@ -7,9 +7,11 @@ use Illuminate\Filesystem\Filesystem;
 
 use function basename;
 use function dirname;
+use function in_array;
 use function preg_match;
 use function str_replace;
 use function strcasecmp;
+use function strtolower;
 
 class MakeModuleUsecase extends Command
 {
@@ -22,8 +24,8 @@ class MakeModuleUsecase extends Command
         $module = $this->argument('module');
         $name = $this->argument('name');
 
-        if (preg_match('/\A[A-Z][A-Za-z0-9]*\z/D', $module) !== 1 || preg_match('/\A[A-Z][A-Za-z0-9]*\z/D', $name) !== 1) {
-            $this->error('Use single StudlyCase module and use case names, for example Billing IssueInvoice.');
+        if (preg_match('/\A[A-Z][A-Za-z0-9]*\z/D', $module) !== 1 || preg_match('/\A[A-Z][A-Za-z0-9]*\z/D', $name) !== 1 || in_array(strtolower($name), ['int', 'float', 'bool', 'string', 'true', 'false', 'null', 'void', 'iterable', 'object', 'mixed', 'never', 'self', 'parent'], true)) {
+            $this->error('Use single StudlyCase module and use case names that are not reserved PHP types, for example Billing IssueInvoice.');
 
             return self::FAILURE;
         }

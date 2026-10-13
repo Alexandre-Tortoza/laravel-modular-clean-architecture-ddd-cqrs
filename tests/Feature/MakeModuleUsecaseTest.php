@@ -45,6 +45,8 @@ test('module usecase rejects invalid names before creating files', function (str
     ['example', 'ArchiveEntries'],
     ['Example', 'Invalid-Name'],
     ['Example', 'Class'],
+    ['Example', 'Int'],
+    ['Example', 'Self'],
 ]);
 
 test('module usecase requires an existing module with the requested casing', function (string $module) {
