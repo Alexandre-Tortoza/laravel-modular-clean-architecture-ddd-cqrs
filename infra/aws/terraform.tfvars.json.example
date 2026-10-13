@@ -1,0 +1,40 @@
+{
+    "aws_region": "<SELECT_AWS_REGION>",
+    "environment": "<SELECT_ENVIRONMENT>",
+    "domain_name": "<YOUR_OWNED_HOSTNAME>",
+    "network": {
+        "vpc_cidr": "<SELECT_VPC_IPV4_CIDR>",
+        "public_subnet_cidr": "<SELECT_PUBLIC_SUBNET_IPV4_CIDR>",
+        "public_subnet_az": "<SELECT_EC2_AVAILABILITY_ZONE>",
+        "private_subnets": [
+            {
+                "cidr": "<SELECT_PRIVATE_SUBNET_IPV4_CIDR>",
+                "availability_zone": "<SELECT_RDS_AZ_A>"
+            },
+            {
+                "cidr": "<SELECT_PRIVATE_SUBNET_IPV4_CIDR>",
+                "availability_zone": "<SELECT_RDS_AZ_B>"
+            }
+        ]
+    },
+    "compute": {
+        "instance_type": "<SELECT_EC2_INSTANCE_TYPE>",
+        "root_volume_gib": null
+    },
+    "database": {
+        "instance_class": "<SELECT_RDS_INSTANCE_CLASS>",
+        "allocated_storage_gib": null,
+        "backup_retention_days": null
+    },
+    "recovery": {
+        "rpo_minutes": null,
+        "rto_minutes": null,
+        "restore_test_interval_days": null
+    },
+    "cost_review": {
+        "owner": "<NAME_COST_REVIEW_OWNER>",
+        "monthly_budget": null
+    },
+    "web_ingress_ipv4_cidrs": ["<SELECT_ALLOWED_WEB_CLIENT_IPV4_CIDR>"],
+    "enable_http_ingress": false
+}

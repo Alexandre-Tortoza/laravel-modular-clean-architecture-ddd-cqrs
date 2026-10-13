@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+umask 0077
+fail() { printf '%s\n' 'TLS requires an explicit valid domain, certificate mechanism and readonly certificate pair.' >&2; exit 1; }
+case "${TLS_CERTIFICATE_MECHANISM:-}" in
+    provided|acme-dns) challenge='location ^~ /.well-known/acme-challenge/ { return 404; }' ;;
+    acme-webroot) challenge='location ~ ^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$ { root /run/acme; disable_symlinks on; try_files $uri =404; default_type text/plain; }' ;;
+    *) fail ;;
+esac
+# Reject config injection and normalize neither domains nor certificate paths.
+printf '%s' "${TLS_DOMAIN:-}" | awk '
+    length($0) > 253 || $0 !~ /^[a-z0-9.-]+$/ || $0 !~ /\.[a-z][a-z0-9-]*$/ { exit 1 }
+    { count=split($0, labels, "."); for (i=1;i<=count;i++) if (length(labels[i]) < 1 || length(labels[i]) > 63 || labels[i] ~ /^-/ || labels[i] ~ /-$/) exit 1 }
+' || fail
+test -n "${TLS_DOMAIN:-}" || fail
+test -r /run/tls/current/fullchain.pem && test -r /run/tls/current/privkey.pem || fail
+test ! -w /run/tls/current/privkey.pem || fail
+sed -e "s/__TLS_DOMAIN__/$TLS_DOMAIN/g" -e "s|__ACME_LOCATION__|$challenge|" /etc/nginx/tls.conf.template >/tmp/nginx/tls.conf
+nginx -t -c /tmp/nginx/tls.conf
+exec nginx -c /tmp/nginx/tls.conf -g 'daemon off;'

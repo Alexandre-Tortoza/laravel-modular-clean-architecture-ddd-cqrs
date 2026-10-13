@@ -1,0 +1,47 @@
+# Opt-in EC2 runtime: DNS/certificate issuance and deployment remain owner-approved.
+services:
+    php:
+        image: '${PRODUCTION_PHP_IMAGE:?Use the approved immutable PHP image digest}'
+        env_file:
+            - path: '${PRODUCTION_RUNTIME_ENV_FILE:?Use the approved private runtime file}'
+              format: raw
+        environment:
+            APP_URL: 'https://${TLS_DOMAIN:?Explicit approved TLS hostname}'
+            SESSION_SECURE_COOKIE: 'true'
+            TRUSTED_PROXIES: ''
+        volumes:
+            - type: bind
+              source: '${PRODUCTION_UPLOAD_DIRECTORY:?Use the retained EC2 upload mount}'
+              target: /app/storage/app
+              bind: { create_host_path: false }
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 90s
+        networks: [app]
+    nginx:
+        image: '${PRODUCTION_NGINX_TLS_IMAGE:?Use the approved immutable nginx-tls image digest}'
+        environment:
+            TLS_DOMAIN: '${TLS_DOMAIN:?Explicit owner-approved lowercase DNS hostname}'
+            TLS_CERTIFICATE_MECHANISM: '${TLS_CERTIFICATE_MECHANISM:?provided, acme-webroot or acme-dns}'
+        volumes:
+            - type: bind
+              source: '${TLS_CERTIFICATE_DIRECTORY:?Restricted host directory with installed current pair}'
+              target: /run/tls
+              read_only: true
+              bind: { create_host_path: false }
+            - type: bind
+              source: '${TLS_ACME_WEBROOT:?An explicit empty or ACME challenge directory}'
+              target: /run/acme
+              read_only: true
+              bind: { create_host_path: false }
+        ports:
+            - '${TLS_BIND_IPV4:?Explicit EC2 host bind address}:80:8081'
+            - '${TLS_BIND_IPV4:?Explicit EC2 host bind address}:443:8443'
+        depends_on: [php]
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 30s
+        networks: [app]
+networks:
+    app:
+        driver: bridge
