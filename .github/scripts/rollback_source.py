@@ -5,6 +5,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 from deployment_source import execute_aws, send_and_wait, validate_target
@@ -29,7 +30,7 @@ def prepare(target, identity, request):
     return selected
 
 
-def recover(target, request, execute):
+def recover(target, request, execute, acknowledged=lambda _: None):
     selected = request['expected_previous'] if request['target'] == 'previous' else request['expected_current']
     def explicit_operation(arguments):
         if arguments[1] == 'send-command':
@@ -44,7 +45,7 @@ def recover(target, request, execute):
             arguments[arguments.index('--comment') + 1] = 'Approved retained Laravel application rollback'
         return execute(arguments)
     # The same polling/receipt boundary as deploy; payload remains the full bound rollback request.
-    return send_and_wait(target, request | {'release': selected}, explicit_operation)
+    return send_and_wait(target, request | {'release': selected}, explicit_operation, acknowledged=acknowledged)
 
 
 def main():
@@ -64,9 +65,9 @@ def main():
             print('Rollback target and retained config verified; no JWT/AWS/host operation performed')
         else:
             if os.environ.get('IMAGE_ROLLBACK_AUTHORIZED') != 'true': raise ValueError('Rollback requires explicit owner activation')
-            print(json.dumps(recover(target, request, execute_aws), sort_keys=True))
+            print(json.dumps(recover(target, request, execute_aws, acknowledged=lambda value: print(json.dumps(value, sort_keys=True), flush=True)), sort_keys=True))
         return 0
-    except (ValueError, KeyError, TypeError, OSError, RuntimeError):
+    except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError):
         print('Controlled rollback failed; private artifact, credential and SSM diagnostics withheld', file=sys.stderr)
         return 1
 
