@@ -20,7 +20,7 @@ signals do not establish an availability SLA.
 The pre-created `/template/<environment>/runtime` group has explicit bounded
 retention. Its `health` stream accepts only the controlled health event, full
 configured source revision and two numeric HTTP statuses. The observer never
-reads or publishes response bodies or headers, URL credentials, application
+reads response bodies or forwards diagnostic headers, URL credentials, application
 logs, database queries, exceptions or provider diagnostics. The revision is
 operator-configured metadata; this probe does not verify running image identity.
 

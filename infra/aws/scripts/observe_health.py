@@ -43,7 +43,7 @@ def status(url, ca_file):
         context = ssl.create_default_context(cafile=ca_file)
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(), urllib.request.HTTPSHandler(context=context))
         with opener.open(urllib.request.Request(url, headers={'Accept': 'application/json'}), timeout=5) as response:
-            # Headers/body may contain data or diagnostics. Never read, publish or log them.
+            # Do not inspect response bodies or forward diagnostic headers.
             return response.status
     except urllib.error.HTTPError as error:
         error.close()
@@ -81,11 +81,15 @@ def publish(config, observation, aws_cli):
             'logEvents': [{'timestamp': int(time.time() * 1000), 'message': json.dumps(observation['event'], separators=(',', ':'))}]}
     for service, operation, payload in [('cloudwatch', 'put-metric-data', metrics), ('logs', 'put-log-events', logs)]:
         result = subprocess.run([aws_cli, service, operation, '--region', config['region'], '--cli-input-json', 'file:///dev/stdin',
-                                 '--no-cli-pager', '--cli-connect-timeout', '5', '--cli-read-timeout', '15'],
+                                 '--output', 'json', '--no-cli-pager', '--cli-connect-timeout', '5', '--cli-read-timeout', '15'],
                                 input=json.dumps(payload), env=instance_profile_environment(), capture_output=True,
                                 text=True, timeout=30, check=False)
         if result.returncode:
             raise ValueError('Selected observation publication failed')
+        if service == 'logs':
+            response = json.loads(result.stdout or '{}')
+            if not isinstance(response, dict) or response.get('rejectedLogEventsInfo'):
+                raise ValueError('Selected health log event was rejected; verify host clock and retention locally')
 
 
 def main():

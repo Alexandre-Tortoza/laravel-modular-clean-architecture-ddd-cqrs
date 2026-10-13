@@ -139,7 +139,7 @@ variable "recovery" {
 }
 
 variable "cost_review" {
-  description = "Cost-review owner and optional explicit monthly ceiling/currency; null budget means undecided, not free. This creates no AWS Budget."
+  description = "Cost-review owner and optional explicit monthly ceiling/currency; null budget means undecided, not free. Only a separately selected monitoring.budget creates AWS Budget notifications."
   type = object({
     owner = string
     monthly_budget = object({

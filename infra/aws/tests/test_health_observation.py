@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import contextlib
 import http.server
+import http.client
 import io
 import ssl
 import threading
@@ -68,6 +69,16 @@ class HealthObservationTest(unittest.TestCase):
             with self.assertRaises(ValueError) as error:
                 module.publish(self.config(), observation, '/approved/aws')
         self.assertNotIn('secret-canary', str(error.exception))
+
+    def test_http_success_with_rejected_log_events_is_not_reported_as_publication_success(self):
+        module = self.load()
+        with patch.object(module, 'status', side_effect=[200, 200]):
+            observation = module.collect(self.config())
+        for rejection in ['tooNewLogEventStartIndex', 'tooOldLogEventEndIndex', 'expiredLogEventEndIndex']:
+            results = [subprocess.CompletedProcess([], 0, '', ''),
+                       subprocess.CompletedProcess([], 0, json.dumps({'rejectedLogEventsInfo': {rejection: 0}}), '')]
+            with patch.object(module.subprocess, 'run', side_effect=results), self.subTest(rejection=rejection), self.assertRaises(ValueError):
+                module.publish(self.config(), observation, '/approved/aws')
 
     def test_public_configuration_cannot_select_http_credentials_or_unrelated_log_streams(self):
         module = self.load()
@@ -165,8 +176,10 @@ class HealthHttpsBoundaryTest(unittest.TestCase):
         return f'https://{hostname}:{self.server.server_port}'
 
     def test_selected_ca_accepts_status_without_exporting_diagnostic_body(self):
-        self.assertEqual(self.module.status(self.origin() + '/up', str(self.ca_file)), 200)
-        self.assertEqual(self.module.status(self.origin() + '/ready', str(self.ca_file)), 503)
+        with patch.object(http.client.HTTPResponse, 'read', side_effect=AssertionError('Diagnostic response bodies must remain unread')) as read:
+            self.assertEqual(self.module.status(self.origin() + '/up', str(self.ca_file)), 200)
+            self.assertEqual(self.module.status(self.origin() + '/ready', str(self.ca_file)), 503)
+            read.assert_not_called()
 
     def test_bad_hostname_and_untrusted_ca_fail_closed(self):
         self.assertEqual(self.module.status(self.origin('127.0.0.1') + '/up', str(self.ca_file)), 0)
