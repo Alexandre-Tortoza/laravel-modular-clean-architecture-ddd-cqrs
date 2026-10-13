@@ -3,26 +3,6 @@ name: Production PostgreSQL smoke
 on:
   pull_request:
     branches: [dev]
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - docker/**
-      - compose.production.smoke.yaml
-      - tests/Docker/production-smoke.sh
-      - tests/Docker/production-fixture.php
-      - .github/workflows/production-smoke.yml
-      - composer.json
-      - composer.lock
-      - package.json
-      - package-lock.json
-      - vite.config.ts
-      - app/**
-      - bootstrap/**
-      - config/**
-      - database/**
-      - public/**
-      - resources/**
-      - routes/**
   workflow_dispatch:
 
 permissions:
@@ -32,6 +12,10 @@ jobs:
   production-postgresql:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        store: [database, redis]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,4 +27,4 @@ jobs:
           docker build --build-arg "SOURCE_REVISION=$revision" --target runtime --tag laravel-php:production-smoke .
           docker build --build-arg "SOURCE_REVISION=$revision" --target nginx --tag laravel-nginx:production-smoke .
       - name: Exercise production images with disposable PostgreSQL
-        run: bash tests/Docker/production-smoke.sh laravel-php:production-smoke laravel-nginx:production-smoke "$(git rev-parse HEAD)"
+        run: bash tests/Docker/production-smoke.sh laravel-php:production-smoke laravel-nginx:production-smoke "$(git rev-parse HEAD)" "${{ matrix.store }}"

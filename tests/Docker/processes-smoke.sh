@@ -4,13 +4,15 @@ image="${1:?Provide the PHP production image}"
 temporary_directory="$(mktemp -d)"
 project="process-smoke-${RANDOM}-${RANDOM}"
 volume="${project}-storage"
+upload_volume="${project}-uploads"
 cleanup() {
     result=$?
     if test "$result" -ne 0; then
         docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" logs >&2 || true
     fi
-    docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" down --timeout 90 >/dev/null 2>&1 || true
+    docker compose -p "$project" -f compose.production.processes.yaml -f "$temporary_directory/override.yaml" down --volumes --timeout 90 >/dev/null 2>&1 || true
     docker volume rm "$volume" >/dev/null 2>&1 || true
+    docker volume rm "$upload_volume" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
     exit "$result"
 }
@@ -43,12 +45,16 @@ services:
 volumes:
     runtime-storage:
         name: '$volume'
+    app-storage:
+        name: '$upload_volume'
 EOF
 docker volume create "$volume" >/dev/null
+docker volume create "$upload_volume" >/dev/null
 # Only the disposable test volume is migrated. This is never a production startup action.
 run_fixture() {
     docker run --rm --network none --env-file "$RUNTIME_ENV_FILE" \
         --volume "$volume:/app/storage" \
+        --volume "$upload_volume:/app/storage/app" \
         --mount "type=bind,source=$PWD/tests/Docker/queue-runtime.php,target=/app/tests/Docker/queue-runtime.php,readonly" \
         "$image" sh -ec 'touch /app/storage/runtime-testing.sqlite; php tests/Docker/queue-runtime.php "$@"' sh "$@"
 }

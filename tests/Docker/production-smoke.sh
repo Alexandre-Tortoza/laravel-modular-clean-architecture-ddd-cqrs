@@ -4,9 +4,21 @@ set -euo pipefail
 php_image="${1:?Provide the PHP production image}"
 nginx_image="${2:?Provide the Nginx production image}"
 revision="${3:?Provide the checked-out source SHA}"
+store="${4:-database}"
+case "$store" in
+    database|redis) ;;
+    *) printf '%s\n' 'Choose the database or redis smoke store.' >&2; exit 1 ;;
+esac
 temporary_directory="$(mktemp -d)"
 project="production-smoke-${RANDOM}-${RANDOM}"
 compose=(docker compose --env-file "$temporary_directory/compose.env" -p "$project" -f compose.production.smoke.yaml)
+if test "$store" = redis; then
+    compose+=(--profile redis)
+fi
+services=(php nginx pgsql)
+if test "$store" = redis; then
+    services+=(redis)
+fi
 stage=environment
 started=false
 
@@ -45,10 +57,14 @@ DB_USERNAME=smoke
 DB_PASSWORD=$SMOKE_DB_PASSWORD
 DB_URL=
 DB_SSLMODE=disable
-SESSION_DRIVER=database
+SESSION_DRIVER=$store
 SESSION_SECURE_COOKIE=true
-CACHE_STORE=database
-QUEUE_CONNECTION=database
+CACHE_STORE=$store
+QUEUE_CONNECTION=$store
+REDIS_HOST=redis
+REDIS_PREFIX=$project-
+REDIS_DB=0
+REDIS_CACHE_DB=1
 MAIL_MAILER=array
 SMOKE_TEST_PASSWORD=$password
 EOF
@@ -59,7 +75,7 @@ started=true
 "${compose[@]}" up --detach --no-build --wait --wait-timeout 90
 
 stage=runtime-boundaries
-for service in php nginx pgsql; do
+for service in "${services[@]}"; do
     container="$("${compose[@]}" ps -q "$service")"
     docker inspect "$container" | python -c '
 import json, sys
@@ -90,6 +106,17 @@ assert fixture['postgres_major'] == 16
 assert fixture['users'] == 2 and fixture['teams'] == 2
 assert fixture['personal_team_slug'] and fixture['outsider_team_slug']
 PY
+
+stage=selected-stores
+if test "$store" = database; then
+    test -z "$("${compose[@]}" ps --all --quiet redis)"
+fi
+"${compose[@]}" exec -T -e SMOKE_ACTION=drivers php php <tests/Docker/production-fixture.php >"$temporary_directory/drivers.json"
+python - "$temporary_directory/drivers.json" "$store" <<'PYTHON'
+import json, pathlib, sys
+result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert result == {'session': sys.argv[2], 'cache': sys.argv[2], 'queue': sys.argv[2], 'cache_roundtrip': True, 'queue_roundtrip': True}
+PYTHON
 
 stage=http-and-versioned-assets
 port="$("${compose[@]}" port nginx 8080 | cut -d: -f2)"
@@ -203,8 +230,8 @@ assert len(page['props']['teams']) == 2
 PY
 
 stage=graceful-shutdown
-"${compose[@]}" stop --timeout 30 php nginx pgsql
-for service in php nginx pgsql; do
+"${compose[@]}" stop --timeout 30 "${services[@]}"
+for service in "${services[@]}"; do
     test "$(docker inspect --format '{{.State.ExitCode}}' "$("${compose[@]}" ps --all -q "$service")")" = 0
 done
 stage=owned-resource-cleanup
@@ -213,4 +240,5 @@ started=false
 test -z "$(docker ps --all --quiet --filter "label=com.docker.compose.project=$project")"
 test -z "$(docker volume ls --quiet --filter "label=com.docker.compose.project=$project")"
 test -z "$(docker network ls --quiet --filter "label=com.docker.compose.project=$project")"
-printf '%s\n' 'Production smoke passed: immutable non-root images, private PostgreSQL 16, migrations, secure session/CSRF login, Inertia, Teams isolation/write, versioned assets, APP_KEY/upstream failure detection and graceful cleanup.'
+printf 'Production %s smoke passed: \n' "$store"
+printf '%s\n' 'Validated: immutable non-root images, private PostgreSQL 16, migrations, secure session/CSRF login, Inertia, Teams isolation/write, versioned assets, APP_KEY/upstream failure detection and graceful cleanup.'
