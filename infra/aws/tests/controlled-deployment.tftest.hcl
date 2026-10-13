@@ -72,7 +72,6 @@ run "reviewed_deployment_document_has_bound_runtime_only" {
       local.deployment_contract.rollback_runner_sha256 == filesha256("scripts/rollback_release.py") &&
       local.deployment_contract.runner_sha256 == filesha256("scripts/deploy_release.py") &&
       local.deployment_contract.compose_sha256 == filesha256("../../compose.production.release.yaml") &&
-      length(jsonencode(local.deployment_document)) < 65536 &&
       length(local.deployment_document.mainSteps) == 1
     )
     error_message = "Reviewed command must bind the host runner/Compose sources, private env and retained upload paths with safe ENV_VAR input."

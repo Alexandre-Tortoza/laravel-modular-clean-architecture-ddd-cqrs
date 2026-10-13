@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,13 @@ def validate_rollback_request(request):
         raise ValueError('Require explicit forward-compatible schema approval and exact recovery identities')
     if request['target'] not in {'previous', 'current'}:
         raise ValueError('Only a completed receipt can be restored')
-    if not isinstance(request['target_contract_sha256'], str) or len(request['target_contract_sha256']) != 64:
+    if not isinstance(request['expected_current'], dict) or any(value is not None and (not isinstance(value, dict) or set(value) != {'source_revision', 'version', 'php_image', 'nginx_image', 'manifest_sha256', 'assets_sha256'}) for value in (request['expected_current'], request['expected_previous'], request['expected_pending'])):
+        raise ValueError('Require exact public completed/pending release shapes')
+    if request['target'] == 'previous' and (request['expected_previous'] is None or request['expected_pending'] is not None):
+        raise ValueError('A completed rollback requires its retained predecessor and no pending promotion')
+    if request['target'] == 'current' and request['expected_pending'] is None:
+        raise ValueError('Current recovery requires an explicitly bound failed promotion')
+    if not isinstance(request['target_contract_sha256'], str) or not re.fullmatch('[a-f0-9]{64}', request['target_contract_sha256']):
         raise ValueError('Require the completed target contract hash')
 
 
