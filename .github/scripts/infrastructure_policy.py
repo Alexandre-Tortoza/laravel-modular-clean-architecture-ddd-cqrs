@@ -33,8 +33,15 @@ def validate_iam(policy):
         )
         if statement.get('NotResource') or not resources:
             errors.append('Allow IAM policy must name resources')
+        condition = statement.get('Condition', {})
+        equality = condition.get('StringEquals', {}) if isinstance(condition, dict) else {}
+        region = equality.get('aws:RequestedRegion') if isinstance(equality, dict) else None
+        # SSM documents no resource-level permission for GetCommandInvocation.
+        # This exception applies only to that read action and one exact region.
+        regional_invocation = (actions == ['ssm:GetCommandInvocation'] and resources == ['*'] and
+                               isinstance(region, str) and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', region) is not None)
         for action in actions:
-            if ('*' in action or '?' in action) or (any(resource == '*' for resource in resources) and action not in GLOBAL_ACTIONS and not scoped_metric):
+            if ('*' in action or '?' in action) or (any(resource == '*' for resource in resources) and action not in GLOBAL_ACTIONS and not scoped_metric and not regional_invocation):
                 errors.append('Excessive wildcard IAM permission is forbidden')
             if action.startswith('secretsmanager:') or action == 'kms:Decrypt':
                 if any('*' in resource or '?' in resource for resource in resources):

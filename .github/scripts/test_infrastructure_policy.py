@@ -34,6 +34,26 @@ class InfrastructurePolicyTest(unittest.TestCase):
                 self.assertTrue(errors)
                 self.assertNotIn('canary-secret', str(errors))
 
+    def test_get_command_invocation_requires_one_exact_requested_region(self):
+        allowed = {'Statement': [{'Effect': 'Allow', 'Action': ['ssm:GetCommandInvocation'], 'Resource': ['*'],
+                                 'Condition': {'StringEquals': {'aws:RequestedRegion': 'fixture-region'}}}]}
+        self.assertEqual(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(allowed)})), [])
+        for region in [None, '', '*', 'us-*-1', 'us-?-1', ['fixture-region'], '${var.region}']:
+            rejected = {'Statement': [{'Effect': 'Allow', 'Action': ['ssm:GetCommandInvocation'], 'Resource': ['*'],
+                                      'Condition': {'StringEquals': {'aws:RequestedRegion': region}}}]}
+            with self.subTest(region=region):
+                self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(rejected)})))
+        for condition in [{}, {'StringLike': {'aws:RequestedRegion': 'fixture-region'}}]:
+            rejected = {'Statement': [{'Effect': 'Allow', 'Action': ['ssm:GetCommandInvocation'], 'Resource': ['*'], 'Condition': condition}]}
+            self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(rejected)})))
+
+    def test_regional_invocation_exception_cannot_grant_other_actions(self):
+        for actions in [['ssm:GetCommandInvocation', 'ssm:SendCommand'], ['ssm:GetCommandInvocation', 'ssm:ListCommands'], ['ssm:*']]:
+            rejected = {'Statement': [{'Effect': 'Allow', 'Action': actions, 'Resource': ['*'],
+                                      'Condition': {'StringEquals': {'aws:RequestedRegion': 'fixture-region'}}}]}
+            with self.subTest(actions=actions):
+                self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps(rejected)})))
+
     def test_iam_secret_wildcards_and_administration_are_rejected(self):
         for action, resource in [('secretsmanager:GetSecretValue', '*'), ('kms:Decrypt', '*'),
                                  ('secretsmanager:GetSecretValue', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:*'),
