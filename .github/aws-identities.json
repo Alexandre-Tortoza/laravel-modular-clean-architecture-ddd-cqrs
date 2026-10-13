@@ -1,0 +1,42 @@
+{
+    "schema_version": 1,
+    "enabled": false,
+    "repository": {
+        "full_name": "",
+        "id": 0,
+        "owner_id": 0
+    },
+    "aws": {
+        "account_id": "",
+        "region": ""
+    },
+    "identities": {
+        "publisher": {
+            "environment": "",
+            "environment_id": 0,
+            "role_arn": "",
+            "subject": "",
+            "workflow_paths": [
+                ".github/workflows/publish-images.yml",
+                ".github/workflows/immutable-images.yml",
+                ".github/workflows/aws-identity.yml"
+            ],
+            "environment_node_id": "",
+            "ecr_repository_arns": {
+                "php": "",
+                "nginx": ""
+            }
+        },
+        "deploy": {
+            "environment": "",
+            "environment_id": 0,
+            "role_arn": "",
+            "subject": "",
+            "workflow_paths": [
+                ".github/workflows/deploy.yml",
+                ".github/workflows/aws-identity.yml"
+            ],
+            "environment_node_id": ""
+        }
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "aws_region": "<SELECT_STATE_BUCKET_REGION>",
+    "aws_partition": "<SELECT_AWS_PARTITION>",
+    "state_bucket_name": "<SELECT_GLOBALLY_UNIQUE_BUCKET_NAME>",
+    "environment": "<SELECT_ENVIRONMENT>",
+    "approved_principal_arns": [
+        "<BOOTSTRAP_AND_RECOVERY_IAM_ROLE_ARN>",
+        "<ENVIRONMENT_STATE_WRITER_IAM_ROLE_ARN>"
+    ]
+}
