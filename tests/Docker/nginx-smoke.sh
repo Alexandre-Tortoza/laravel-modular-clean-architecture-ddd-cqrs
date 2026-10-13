@@ -108,17 +108,25 @@ done
 grep -q 'Application up' "$temporary_directory/health"
 curl --silent --fail --max-time 10 "$base_url/login" >"$temporary_directory/login"
 grep -q '/build/assets/' "$temporary_directory/login"
+code="$(curl --silent --max-time 10 --header 'X-Inertia: true' --header 'X-Requested-With: XMLHttpRequest' \
+    --header 'X-Inertia-Version: stale-release-smoke' --dump-header "$temporary_directory/stale-headers" \
+    --output /dev/null --write-out '%{http_code}' "$base_url/login")"
+test "$code" = 409
+grep -iq '^X-Inertia-Location:' "$temporary_directory/stale-headers"
+asset_version="$(awk -F ': *' 'tolower($1) == "x-inertia-version" { gsub("\r", "", $2); print $2 }' "$temporary_directory/stale-headers")"
+test -n "$asset_version"
 curl --silent --fail --max-time 10 --header 'X-Inertia: true' --header 'X-Requested-With: XMLHttpRequest' \
+    --header "X-Inertia-Version: $asset_version" \
     --dump-header "$temporary_directory/inertia-headers" "$base_url/login" >"$temporary_directory/inertia-page"
 grep -iq '^X-Inertia: true' "$temporary_directory/inertia-headers"
-python - "$temporary_directory/inertia-page" <<'PY'
+python - "$temporary_directory/inertia-page" "$asset_version" <<'PY'
 import json
 import pathlib
 import sys
 
 page = json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert page['component'] == 'auth/Login'
-assert isinstance(page['version'], str) and page['version']
+assert page['version'] == sys.argv[2]
 PY
 curl --silent --fail --max-time 10 "$base_url/index.php" >"$temporary_directory/front-controller"
 ! grep -q '<?php' "$temporary_directory/front-controller"

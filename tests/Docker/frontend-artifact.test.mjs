@@ -60,7 +60,7 @@ function fixture(context) {
     };
 }
 
-test('release identifies the source, locks, generated routes and every compiled file deterministically', (context) => {
+await test('release identifies the source, locks, generated routes and every compiled file deterministically', (context) => {
     const { directory, run, release } = fixture(context);
     assert.equal(run().status, 0);
     const first = readFileSync(
@@ -87,7 +87,7 @@ test('release identifies the source, locks, generated routes and every compiled 
     assert.notEqual(release().wayfinder_sha256, oldWayfinder);
 });
 
-test('production packaging refuses an ambiguous source revision and VITE environment input', (context) => {
+await test('production packaging refuses an ambiguous source revision and VITE environment input', (context) => {
     const { run } = fixture(context);
     assert.notEqual(run('main').status, 0);
     const result = run(revision, {
@@ -98,7 +98,7 @@ test('production packaging refuses an ambiguous source revision and VITE environ
     assert.ok(!result.stderr.includes('PRIVATE_VALUE_CANARY'));
 });
 
-test('production packaging refuses source maps and original frontend source files', (context) => {
+await test('production packaging refuses source maps and original frontend source files', (context) => {
     const { directory, run } = fixture(context);
     for (const path of ['assets/app.js.map', 'assets/Login.vue', '.env']) {
         writeFileSync(
@@ -115,7 +115,7 @@ test('production packaging refuses source maps and original frontend source file
     assert.notEqual(run().status, 0);
 });
 
-test('production packaging requires the manifest and fresh generated Wayfinder output', (context) => {
+await test('production packaging requires the manifest and fresh generated Wayfinder output', (context) => {
     const { directory, run } = fixture(context);
     rmSync(`${directory}/public/build/manifest.json`);
     assert.notEqual(run().status, 0);
