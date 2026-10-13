@@ -1,8 +1,11 @@
 # Synthetic values exercise the interface offline; they are not deployment recommendations.
+mock_provider "aws" {}
+
 variables {
-  aws_region  = "fixture-region"
-  environment = "fixture"
-  domain_name = "fixture.invalid"
+  aws_region             = "fixture-region"
+  environment            = "fixture"
+  domain_name            = "fixture.invalid"
+  web_ingress_ipv4_cidrs = ["203.0.113.0/24"]
   network = {
     vpc_cidr           = "10.123.0.0/16"
     public_subnet_cidr = "10.123.1.0/24"

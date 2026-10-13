@@ -50,6 +50,47 @@ variable "network" {
     )
     error_message = "Supply valid IPv4 CIDRs and private subnets in at least two named, distinct AZs, even for Single-AZ RDS."
   }
+  validation {
+    condition = try(alltrue([
+      for cidr in concat([var.network.vpc_cidr, var.network.public_subnet_cidr], [for subnet in var.network.private_subnets : subnet.cidr]) :
+      tonumber(split("/", cidr)[1]) >= 16 && tonumber(split("/", cidr)[1]) <= 28
+    ]), false)
+    error_message = "VPC and subnet IPv4 CIDRs must use AWS-supported prefix lengths /16 through /28."
+  }
+  validation {
+    condition = try(alltrue([
+      for cidr in concat([var.network.public_subnet_cidr], [for subnet in var.network.private_subnets : subnet.cidr]) :
+      tonumber(split("/", cidr)[1]) >= tonumber(split("/", var.network.vpc_cidr)[1]) &&
+      cidrhost("${cidrhost(cidr, 0)}/${split("/", var.network.vpc_cidr)[1]}", 0) == cidrhost(var.network.vpc_cidr, 0)
+    ]), false)
+    error_message = "All public and private subnets must be contained in the selected VPC CIDR."
+  }
+  validation {
+    condition = try(alltrue(flatten([
+      for i, left in concat([var.network.public_subnet_cidr], [for subnet in var.network.private_subnets : subnet.cidr]) : [
+        for j, right in concat([var.network.public_subnet_cidr], [for subnet in var.network.private_subnets : subnet.cidr]) :
+        i >= j || cidrhost("${cidrhost(left, 0)}/${min(tonumber(split("/", left)[1]), tonumber(split("/", right)[1]))}", 0) != cidrhost("${cidrhost(right, 0)}/${min(tonumber(split("/", left)[1]), tonumber(split("/", right)[1]))}", 0)
+      ]
+    ])), false)
+    error_message = "Public and private subnet CIDRs must not overlap."
+  }
+}
+
+variable "web_ingress_ipv4_cidrs" {
+  description = "Explicit HTTPS client CIDRs; select 0.0.0.0/0 only when a public web service is intended."
+  type        = set(string)
+  nullable    = false
+  validation {
+    condition     = length(var.web_ingress_ipv4_cidrs) > 0 && alltrue([for cidr in var.web_ingress_ipv4_cidrs : can(cidrnetmask(cidr))])
+    error_message = "Select at least one valid IPv4 client CIDR for HTTPS ingress explicitly."
+  }
+}
+
+variable "enable_http_ingress" {
+  description = "Opt-in port 80 for a redirect or certificate challenge; runtime TLS must be implemented separately."
+  type        = bool
+  default     = false
+  nullable    = false
 }
 
 variable "compute" {
