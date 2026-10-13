@@ -1,0 +1,176 @@
+name: Promote approved immutable OCI images
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: 'Successful immutable-images producer run dispatched from main'
+        required: true
+        type: string
+      source_revision:
+        description: 'Full source SHA already built and tested on protected main'
+        required: true
+        type: string
+      version:
+        description: 'Built stable SemVer (vMAJOR.MINOR.PATCH)'
+        required: true
+        type: string
+      previous_run_id:
+        description: 'Completed protected producer for recoverable N-1'
+        type: string
+      initial_release:
+        description: 'Explicit first release with no predecessor'
+        type: boolean
+        default: false
+      environment:
+        description: 'Existing approved publisher environment (never created by this workflow)'
+        required: true
+        type: string
+      role_arn:
+        description: 'Approved dedicated publisher role in aws-identities.json'
+        required: true
+        type: string
+      publish:
+        description: 'Explicitly authorize promotion after human environment approval; disabled by default'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: immutable-image-publication
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise manifest and publication failures without AWS credentials
+        run: python3 -m unittest discover -s .github/scripts -p 'test_image_release*.py' -v
+
+  prepare:
+    needs: contracts
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish && vars.ENABLE_IMAGE_PUBLISHING == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      environment: ${{ steps.protection.outputs.environment }}
+      environment_id: ${{ steps.protection.outputs.environment_id }}
+      environment_node_id: ${{ steps.protection.outputs.environment_node_id }}
+      role_arn: ${{ steps.protection.outputs.role_arn }}
+      aws_region: ${{ steps.protection.outputs.aws_region }}
+      ecr_php_repository_arn: ${{ steps.protection.outputs.ecr_php_repository_arn }}
+      ecr_nginx_repository_arn: ${{ steps.protection.outputs.ecr_nginx_repository_arn }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IMAGE_RUN_ID: ${{ inputs.build_run_id }}
+      IMAGE_SOURCE_REVISION: ${{ inputs.source_revision }}
+      IMAGE_VERSION: ${{ inputs.version }}
+      IMAGE_PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+      IMAGE_INITIAL_RELEASE: ${{ inputs.initial_release }}
+      IMAGE_ENVIRONMENT: ${{ inputs.environment }}
+      IMAGE_ROLE_ARN: ${{ inputs.role_arn }}
+    steps:
+      - name: Checkout trusted publisher policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require existing protection and exact identities before scheduling environment
+        id: protection
+        run: |
+          python3 .github/scripts/aws_identity_preflight.py --purpose publisher --environment "$IMAGE_ENVIRONMENT" \
+            --source-revision "$IMAGE_SOURCE_REVISION" --role-arn "$IMAGE_ROLE_ARN"
+      - name: Verify protected producer, archives, predecessor and exact source quality gates
+        run: |
+          initial=()
+          if test "$IMAGE_INITIAL_RELEASE" = true; then initial=(--initial); fi
+          python3 .github/scripts/image_release_source.py prepare --run-id "$IMAGE_RUN_ID" --directory "$RUNNER_TEMP/approved-images" \
+            --source-revision "$IMAGE_SOURCE_REVISION" --version "$IMAGE_VERSION" --previous-run-id "$IMAGE_PREVIOUS_RUN_ID" "${initial[@]}"
+
+  publish:
+    needs: prepare
+    if: needs.prepare.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish && vars.ENABLE_IMAGE_PUBLISHING == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IMAGE_RUN_ID: ${{ inputs.build_run_id }}
+      IMAGE_SOURCE_REVISION: ${{ inputs.source_revision }}
+      IMAGE_VERSION: ${{ inputs.version }}
+      IMAGE_PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+      IMAGE_INITIAL_RELEASE: ${{ inputs.initial_release }}
+      IMAGE_ENVIRONMENT: ${{ needs.prepare.outputs.environment }}
+      IMAGE_ROLE_ARN: ${{ needs.prepare.outputs.role_arn }}
+      APPROVED_ENVIRONMENT_ID: ${{ needs.prepare.outputs.environment_id }}
+      APPROVED_ENVIRONMENT_NODE_ID: ${{ needs.prepare.outputs.environment_node_id }}
+      APPROVED_PHP_REPOSITORY_ARN: ${{ needs.prepare.outputs.ecr_php_repository_arn }}
+      APPROVED_NGINX_REPOSITORY_ARN: ${{ needs.prepare.outputs.ecr_nginx_repository_arn }}
+    steps:
+      - name: Checkout same trusted publisher policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install registry transport before requesting credentials
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+          skopeo --version
+      - name: Recheck producer, gates and immutable protection after human approval
+        run: |
+          umask 0077
+          python3 .github/scripts/aws_identity_preflight.py --purpose publisher --environment "$IMAGE_ENVIRONMENT" \
+            --source-revision "$IMAGE_SOURCE_REVISION" --role-arn "$IMAGE_ROLE_ARN" >"$RUNNER_TEMP/expected-identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'expected-identity.json').read_text())
+          checks = {'environment_id': 'APPROVED_ENVIRONMENT_ID', 'environment_node_id': 'APPROVED_ENVIRONMENT_NODE_ID',
+                    'ecr_php_repository_arn': 'APPROVED_PHP_REPOSITORY_ARN', 'ecr_nginx_repository_arn': 'APPROVED_NGINX_REPOSITORY_ARN'}
+          if any(identity[key] != os.environ[value] for key, value in checks.items()):
+              raise ValueError('The approved environment or registry identity changed while awaiting human approval.')
+          PY
+          initial=()
+          if test "$IMAGE_INITIAL_RELEASE" = true; then initial=(--initial); fi
+          python3 .github/scripts/image_release_source.py prepare --run-id "$IMAGE_RUN_ID" --directory "$RUNNER_TEMP/approved-images" \
+            --source-revision "$IMAGE_SOURCE_REVISION" --version "$IMAGE_VERSION" --previous-run-id "$IMAGE_PREVIOUS_RUN_ID" "${initial[@]}"
+      - name: Verify signature and claims of the exact token used for STS
+        run: node .github/scripts/verify_github_oidc.mjs "$RUNNER_TEMP/expected-identity.json" --token-file "$RUNNER_TEMP/verified-oidc.jwt"
+      - name: Assume only the approved publisher role with the same verified JWT
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ needs.prepare.outputs.aws_region }}
+          role-to-assume: ${{ needs.prepare.outputs.role_arn }}
+          web-identity-token-file: ${{ runner.temp }}/verified-oidc.jwt
+          role-duration-seconds: 900
+          role-session-name: immutable-images-${{ github.run_id }}
+          unset-current-credentials: true
+          force-skip-oidc: true
+          output-credentials: false
+      - name: Promote retained bytes by original OCI digest without rebuilding
+        env:
+          IMAGE_PUBLISH_AUTHORIZED: 'true'
+        run: |
+          previous=()
+          if test -d "$RUNNER_TEMP/approved-images/previous"; then previous=(--previous "$RUNNER_TEMP/approved-images/previous"); fi
+          python3 .github/scripts/image_release_publish.py --directory "$RUNNER_TEMP/approved-images/current" "${previous[@]}" \
+            --php-repository-arn "$APPROVED_PHP_REPOSITORY_ARN" --nginx-repository-arn "$APPROVED_NGINX_REPOSITORY_ARN"
+      - name: Remove verified token even on failure
+        if: always()
+        run: rm -f "$RUNNER_TEMP/verified-oidc.jwt" "$RUNNER_TEMP/expected-identity.json"

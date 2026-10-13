@@ -1,0 +1,224 @@
+{
+    "schema_version": 1,
+    "version": "v0.1.0",
+    "purpose": "unpublished-template-release-preparation",
+    "approved_main_release_sha": null,
+    "ready_for_publication": false,
+    "publish": false,
+    "tag": false,
+    "deploy": false,
+    "repository": "Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs",
+    "observed_remote_main_sha": "13d2de376dd1a8b76e229255ef89dffee6890c21",
+    "coverage_equivalence": {
+        "baseline_sha": "9116d1d964f5a7e93781cdc0f020bad5d74882bc",
+        "compared_candidate_sha": "95ff91858cda02c7379e9622cdb8f3ba6ee114d0",
+        "run_id": 38426817082,
+        "run_url": "https://github.com/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs/actions/runs/38426817082",
+        "run_conclusion": "success",
+        "quality_job_conclusions": {
+            "ci": "success",
+            "minimum-php": "success",
+            "postgres-concurrency": "success",
+            "sail": "success"
+        },
+        "coverage_job_conclusion": "success",
+        "reported_total_percent": 100.0,
+        "passed_tests": 479,
+        "assertions": 1879,
+        "opt_in_skipped_tests": 10,
+        "tracked_php_files": 261,
+        "extra_inputs": [
+            "composer.json",
+            "composer.lock",
+            "phpunit.xml",
+            ".github/workflows/tests.yml"
+        ],
+        "unique_manifest_entries": 265,
+        "git_blob_changes": [],
+        "git_blob_manifest_encoding": "UTF-8 lines: git blob OID + space + path + LF, sorted by path",
+        "git_blob_manifest_sha256": "dcd0bda08160bd1c6f57979d7ab64d6b3838f1716ed3257c7402eb636c5ca2bb",
+        "php_content_manifest_encoding": "sorted path + NUL + lowercase SHA256(content) + LF; a distinct content algorithm",
+        "php_content_manifest_sha256": "fe65c80959be815c0cee58915f8ad5de488a2734e49d96d577da6eb3aa979ac3",
+        "equivalent_inputs_sha256": {
+            "composer.json": "89b559fd25d19ec9ce20a1c17fe5fbcb4713d9f29a03380073d40194c3a0697a",
+            "composer.lock": "9452e350398ae47d3a2ba269b571cc0edcd7bb4c73a8f214228f9370dc0cfb67",
+            "phpunit.xml": "c19c7796a4c372d8e3205c1f0bfb92a971bf8bbb80bf78d8396bbcae04e9a1ff",
+            ".github/workflows/tests.yml": "7426548d7f89a2ba576ac91d39aa10d13e5cb6428c9027cc1616b3dd97235a3b"
+        },
+        "branch_verifier": {
+            "path": "tests/Support/AssertFullCoverage.php",
+            "included_once_in_php_manifest": true,
+            "git_blob": "d2d989bf4469eed516a895bcb7cab8032e840d96",
+            "sha256": "b2d656a5601419555664e1e55ed19ab2acbeb9ed6023840845f85aa839684227",
+            "executed_as_part_of_successful_composer_coverage": true
+        },
+        "future_main_gate_passed": false,
+        "scope": "The compared candidate inherits the tested correction and matches its 265 unique blobs. Preview refresh changes only documentation. This is not a new exact-main-SHA coverage run."
+    },
+    "file_inventory": {
+        "scope": "Tracked files at compared_candidate_sha before this public preview refresh; re-audit final approved main and attachments.",
+        "tracked_file_count": 699,
+        "sensitive_filename_checks": [
+            ".env* except committed *.example",
+            "auth.json",
+            "credentials",
+            "id_rsa",
+            "id_ed25519",
+            "vendor/",
+            "node_modules/",
+            "public/build/",
+            "storage/coverage/",
+            "generated Wayfinder directories",
+            "*.tfstate and backups",
+            "*.tfplan",
+            "*.oci.tar",
+            "*.sqlite and journals",
+            "*.sql.gz",
+            "*.dump",
+            "*.p12",
+            "*.pfx",
+            "*.pem",
+            "*.key"
+        ],
+        "sensitive_filename_findings": [],
+        "marker_checks": [
+            "AWS AKIA/ASIA access-key identifiers",
+            "PEM private-key headers"
+        ],
+        "marker_findings": [],
+        "security_certification": false,
+        "compared_candidate_sha": "95ff91858cda02c7379e9622cdb8f3ba6ee114d0"
+    },
+    "licensing": {
+        "project_spdx": "MIT",
+        "license_sha256": "8cb4ca8ad08db93599985ea3b4e0fc67d02fb211080218d10ce406a5c246ea12",
+        "preserved_notices": [
+            "Copyright (c) Taylor Otwell",
+            "Copyright (c) 2026 Alexandre Marques Tortoza Canoa"
+        ],
+        "composer_locked_packages": 155,
+        "composer_missing_license_metadata": [],
+        "composer_declared_license_groups": [
+            {
+                "declared_licenses": ["Apache-2.0"],
+                "packages": 1
+            },
+            {
+                "declared_licenses": ["BSD-2-Clause"],
+                "packages": 2
+            },
+            {
+                "declared_licenses": ["BSD-3-Clause"],
+                "packages": 31
+            },
+            {
+                "declared_licenses": [
+                    "BSD-3-Clause",
+                    "GPL-2.0-only",
+                    "GPL-3.0-only"
+                ],
+                "packages": 2
+            },
+            {
+                "declared_licenses": ["MIT"],
+                "packages": 119
+            }
+        ],
+        "npm_locked_packages": 367,
+        "npm_declared_license_counts": {
+            "(MIT OR CC0-1.0)": 1,
+            "0BSD": 2,
+            "Apache-2.0": 9,
+            "BSD-2-Clause": 1,
+            "BSD-3-Clause": 1,
+            "ISC": 10,
+            "MIT": 287,
+            "MPL-2.0": 34
+        },
+        "npm_missing_license_metadata": [
+            "node_modules/@yuku-codegen/binding-darwin-arm64",
+            "node_modules/@yuku-codegen/binding-darwin-x64",
+            "node_modules/@yuku-codegen/binding-freebsd-x64",
+            "node_modules/@yuku-codegen/binding-linux-arm-gnu",
+            "node_modules/@yuku-codegen/binding-linux-arm-musl",
+            "node_modules/@yuku-codegen/binding-linux-arm64-gnu",
+            "node_modules/@yuku-codegen/binding-linux-arm64-musl",
+            "node_modules/@yuku-codegen/binding-linux-x64-gnu",
+            "node_modules/@yuku-codegen/binding-linux-x64-musl",
+            "node_modules/@yuku-codegen/binding-win32-arm64",
+            "node_modules/@yuku-codegen/binding-win32-x64",
+            "node_modules/@yuku-parser/binding-darwin-arm64",
+            "node_modules/@yuku-parser/binding-darwin-x64",
+            "node_modules/@yuku-parser/binding-freebsd-x64",
+            "node_modules/@yuku-parser/binding-linux-arm-gnu",
+            "node_modules/@yuku-parser/binding-linux-arm-musl",
+            "node_modules/@yuku-parser/binding-linux-arm64-gnu",
+            "node_modules/@yuku-parser/binding-linux-arm64-musl",
+            "node_modules/@yuku-parser/binding-linux-x64-gnu",
+            "node_modules/@yuku-parser/binding-linux-x64-musl",
+            "node_modules/@yuku-parser/binding-win32-arm64",
+            "node_modules/@yuku-parser/binding-win32-x64"
+        ],
+        "dependency_trees_in_source_archive": false,
+        "scope": "Lockfile declarations and preserved project notices; missing metadata is unknown, not an inferred license. Preserve dependency notices before any redistribution."
+    },
+    "local_preparation_checks": {
+        "native_source_archive_red": "README.md absent under inherited export-ignore",
+        "native_source_archive_green": "README/LICENSE and all committed essential guides retained after removing that one exclusion",
+        "release_policy_tests": {
+            "passed": 10,
+            "live_remote_main_validation_executed": false
+        }
+    },
+    "snapshot_boundaries": {
+        "parent_readme_pr": 113,
+        "parent_readme_sha": "e026eb6e65759eb23c7aae887ca6cc347b7c419d",
+        "parent_final_checks": "46 terminal checks: 33 SUCCESS, 13 intentional SKIPPED at f876c5e; PR Ready, not maintainer acceptance or main promotion",
+        "current_pr_final_checks": "recorded separately in the preparation PR after execution",
+        "initial_acceptance_issues": [48, 49, 51, 55, 56, 58],
+        "initial_acceptance_state": "open at read-only inspection; final acceptance remains maintainer-owned",
+        "github_template_enabled": false,
+        "private_vulnerability_reporting_enabled": false,
+        "confirmed_alternative_private_channel": false,
+        "tag_or_release_created": false,
+        "cloud_operations_executed": false,
+        "parent_readme_current_sha": "f876c5ebf5d919b706a2d7bb601ffe125ba403d5"
+    },
+    "publication_blockers": [
+        "Owner review/integration and promotion to the exact chosen main SHA",
+        "Successful quality and exact coverage on that main SHA; equivalence does not replace the live gate",
+        "Initial release acceptance for issues48/49/51/55/56/58",
+        "Re-audited final files/notices/notes and a confirmed working private reporting channel",
+        "Separate human authorization for immutable tag and public GitHub Release"
+    ],
+    "separate_activation_not_authorized": [
+        "GitHub template Settings and external derived-repository verification (#49)",
+        "Private security reporting channel (#61)",
+        "AWS OIDC/STS/publisher/deployment activation (#35/#36)",
+        "AWS provisioning, secret reads, DNS/certificates, ECR publication, SSM deployment or application rollback"
+    ],
+    "inherited_after_prepared_base": [
+        {
+            "issue": 60,
+            "source_sha": "b1e1f98e3c1f7710a69b8d75f062e93da9be0bb6",
+            "scope": "Documentation only: executor versus operator smoke; rollback fingerprint proves only before/after the same operation, not historical APP_KEY bytes. No covered PHP/input change."
+        },
+        {
+            "issue": 41,
+            "source_sha": "9116d1d964f5a7e93781cdc0f020bad5d74882bc",
+            "scope": "Two PHP test files isolate provider/route/table/migration fixtures from legitimate derived modules; strengthened assertions, no runtime/dependency/policy change; exact coverage verified."
+        },
+        {
+            "issue": 55,
+            "source_sha": "f876c5ebf5d919b706a2d7bb601ffe125ba403d5",
+            "scope": "Initial email-verification guidance and original prerequisite ancestry; historical preparation base remains e026."
+        }
+    ],
+    "historical_coverage_evidence": {
+        "baseline_sha": "fe940f4b28730a264c974edc3c08f161fce9911e",
+        "run_id": 38410800702,
+        "scope": "Historical e026 preparation only; replaced after the #41 fixture test correction, not the current candidate proof."
+    },
+    "historical_preparation_base_sha": "e026eb6e65759eb23c7aae887ca6cc347b7c419d",
+    "snapshot_from_sha": "95ff91858cda02c7379e9622cdb8f3ba6ee114d0"
+}

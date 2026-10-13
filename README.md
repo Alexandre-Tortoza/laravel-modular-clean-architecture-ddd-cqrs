@@ -1,69 +1,100 @@
-# Laravel Vue Modular Architecture Template
+# Laravel Modular Template
 
-Free, open-source, reusable Laravel 13 + Vue 3/Inertia 3 template for a modular monolith using Fortify, Wayfinder, pragmatic Clean Architecture, DDD, and lightweight CQRS. The example is a working Teams flow; there is no command bus, event store, separate database, or sample CRUD added solely for the architecture.
+Free, reusable Laravel 13 + Vue 3/Inertia 3 template for a modular monolith with pragmatic Clean Architecture, DDD and CQRS. Identity, Profile, Security and Teams provide working starter authentication, settings and collaboration flows. Use it as a starting point for your own application; add the boundaries your business needs.
 
-Licensed under the [MIT license](LICENSE), this template can be used, modified, and redistributed, including in commercial projects, subject to the license terms.
+The [MIT license](LICENSE) permits use, modification and redistribution, including commercial use. Based on the [Laravel Vue starter kit](https://github.com/laravel/vue-starter-kit); its copyright notice is retained. Preserve applicable MIT and dependency notices when redistributing. Third-party packages retain their own licenses in their distributions; this project's license does not replace them.
 
-Based on the [Laravel + Vue starter kit](https://github.com/laravel/vue-starter-kit). The Laravel copyright notice is retained in `LICENSE`. Third-party dependencies retain their own licenses and copyright notices in their distributed files, including those installed in `vendor/` and `node_modules/`; preserve applicable notices when redistributing them. The project's MIT license does not replace dependency licenses.
+## Requirements
 
-## Requirements and first install
+| Path                          | Requirements                                                                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recommended local development | Git, POSIX shell (WSL2 on Windows), Docker with daemon access and Compose v2. Sail supplies PHP 8.4, Node 22 and PostgreSQL 16; host PHP/Composer/npm are unnecessary.                 |
+| Without Docker                | PHP **8.4.1+**, Composer **2.8+**, Node **22.18+ in the 22.x series**, npm and SQLite PDO. Run `composer check-platform-reqs` for required extensions. PHP 8.5 is the main CI version. |
+| Production                    | Separate pinned PHP **8.5.10 FPM** and Nginx images; Compose **2.30+** for raw runtime env files. Read the production guide before operating real data.                                |
 
-The project and committed lockfile require PHP 8.4.1 or newer for both runtime and development dependencies. CI runs the main checks on PHP 8.5 and installs and tests the application on exactly PHP 8.4.1 in a disposable container. Install SQLite PDO, Composer 2.8 or newer, Node 22.18 or newer in the 22.x series, and npm. The lockfiles select Laravel 13.35, Fortify 1.41, Inertia Laravel 3.5, Pest 5.3, and Vite 8. Use `composer show --direct` and `npm ls --depth=0` for the exact installed versions on your machine. PostgreSQL, `pdo_pgsql`, `pcntl`, and `posix` are needed to run the concurrency suite locally.
+Lockfiles currently select Laravel 13.35.0, Fortify 1.41.0, Inertia Laravel 3.5.1 and Pest 5.3.1. Confirm installed versions with `composer show --direct` and `npm ls --depth=0`. Initial installation downloads dependencies/images. **AWS and Redis are unnecessary** for development or ordinary tests.
+
+## Five-minute quickstart with Sail
+
+This is the short path to a first result; downloads and image compilation can take longer than five minutes. Use a new directory. During roadmap review select a reviewed branch containing the implementation; remote `dev`/`main` are not automatically updated by these PRs. After integration use the approved branch/release. Replace `YOUR_REVIEWED_BRANCH` before execution:
 
 ```bash
-composer install --no-interaction --prefer-dist
-npm ci
-cp .env.example .env
-php artisan key:generate --no-interaction
-php artisan migrate --force --no-interaction
-php artisan db:seed --force --no-interaction # no demo accounts or teams
-npm run build
+git clone https://github.com/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs.git my-app
+cd my-app
+git switch YOUR_REVIEWED_BRANCH
+./sail-bootstrap
+./vendor/bin/sail build
+./vendor/bin/sail up --detach --wait --wait-timeout 120
+./vendor/bin/sail composer setup
+./vendor/bin/sail artisan db:seed --no-interaction
+./vendor/bin/sail artisan app:create-first-user
+```
+
+Bootstrap installs locked Composer dependencies and copies `.env.sail.example` only when `.env` is absent. Setup installs locked dependencies, clears config cache, generates `APP_KEY` **only if missing**, migrates the selected database and builds assets. Existing configuration/keys are preserved. Standard seeding creates no accounts/teams. The final command provisions the first account and personal team using a hidden, confirmed password in an interactive terminal; there is no password CLI option and public registration is disabled by default.
+
+Open the configured `APP_URL` (the local example is `http://localhost:8000`) and log in. Change `APP_NAME` and `VITE_APP_NAME` for your application's branding, then rebuild. Use `./vendor/bin/sail npm run dev` in another terminal for frontend development; configure ports before startup if they collide.
+
+The first account starts with an unverified email. Before protected dashboard/Teams flows, request verification through the existing page and follow the link in the private local mail log; a deployed application needs its own approved mail transport.
+
+PostgreSQL uses a named volume. Normal `sail stop`/`sail down` preserve it; **`down -v` deletes its data**. Never reset schema/volumes to troubleshoot a database containing application data. Setup is for local development, not production deployment.
+
+## Without Docker: disposable SQLite development
+
+Install the host requirements, clone/select the reviewed revision as above, then run in that new checkout:
+
+```bash
+test -e .env || cp .env.example .env
+test -e database/database.sqlite || touch database/database.sqlite
+composer setup
+php artisan db:seed --no-interaction
+php artisan app:create-first-user
 composer run dev
 ```
 
-Configure `DB_CONNECTION` and its credentials in `.env` before migrating. The default local SQLite database can be created with `touch database/database.sqlite` if it is absent. `composer setup` bootstraps local development, uses `npm ci`, and runs migrations without interactive prompts. It creates `.env` only when absent and generates an application key only when none is configured, preserving the existing `APP_KEY` on rerun. CI verifies two setup runs in a disposable environment. Do not use `composer setup` as a deployment command. Do not point test or migration commands that reset schema at a database containing user data.
+The host example selects SQLite; an existing `.env` wins. Confirm the intended connection/database before setup or migrations. These commands do not convert existing data. `composer dev` starts the PHP server, queue listener, local log viewer and Vite. The log mailer writes local invitations/password-reset content to private application logs. PostgreSQL concurrency additionally needs `pdo_pgsql`, `pcntl`, `posix` and a separate disposable PostgreSQL database; use Sail and the development guide for that path.
 
-Installation and standard seeding create no predefined credentials. For a disposable local demonstration only, explicitly run:
+For a **disposable local/testing demonstration only**, opt in explicitly:
 
 ```bash
+# Host; use ./vendor/bin/sail artisan instead of php artisan with Sail.
 php artisan db:seed --class=DemoDatabaseSeeder --no-interaction
 ```
 
-This opt-in creates the verified account `test@example.com` with password `password` and its personal team. The composite and individual demo seeders reject every environment except `local` and `testing`, including when `--force` is supplied. They do not remove demo accounts that already exist: review previously seeded installations before using them outside development. Do not label a production installation `local` to bypass this protection.
+This creates `test@example.com` / `password` and a personal team. Demo seeders reject other environments even with `--force`; they do not remove accounts already created. Keep demo credentials out of deployed applications and never relabel production as `local` to bypass the guard.
 
-`composer dev` runs the PHP server, queue listener, log viewer, and Vite. `.env.example` uses the log mailer, so invitation and password-reset messages appear in the application log during local development.
+## Verification and tooling
 
-## Existing behavior
-
-Fortify provides login, logout, password reset, email verification, two-factor authentication, passkeys, and password confirmation. Profile settings can update the account or delete it. Account deletion is rejected while the account owns a shared team or a personal team with other members; it never transfers ownership or deletes shared-team data. If memberships change outside the protected deletion snapshot, the operation is rejected without logout or partial cleanup. Invitation responses require verification of the current email, including direct handler calls. Teams supports personal teams, shared teams, member roles, invitations, explicit team switching, and the dashboard. A team URL supplies request context but does not overwrite the saved selection during GET or HEAD navigation. Current-team reads require an active team and membership; an inconsistent stored pointer is ignored, not repaired by a query. Users with no team are sent to the existing teams index. Vue/Inertia pages and generated Wayfinder route functions remain in place. Public registration is disabled in `config/fortify.php`; local demo data requires the explicit command above. Existing HTTP contracts remain in place apart from these documented security and consistency corrections.
-
-## Modules
-
-| Module   | Owns                                                                                                            | Public integration                                                                                                                      |
-| -------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity | `users`, `current_team_id`, authentication account model, password reset adapter, passkeys and two-factor state | Read-only `UserDirectory`, `SecurityAccounts`; actor-scoped `ProfileAccounts`, `AccountCredentials`; Teams-only `TeamSelectionAccounts` |
-| Profile  | Profile update and deletion use cases, validation, settings HTTP routes                                         | Calls Identity `ProfileAccounts` and the Profile-only Teams `AccountTeamLifecycle` API                                                  |
-| Security | Password-change use case and security settings HTTP routes                                                      | No cross-module API; calls Identity `AccountCredentials` and `SecurityAccounts`                                                         |
-| Teams    | `teams`, `team_members`, `team_invitations`, team rules and use cases, notifications                            | `TeamContext` for read-only context; Profile-only `AccountTeamLifecycle`; `TeamQueries` is an internal read port                        |
-
-The module tree is `app/Modules/<Module>/{Domain,Application,Infrastructure,Presentation}` with `routes/` where a module owns routes. `Application/Api` contains exports; `Application/Contracts` contains internal persistence and effect ports. The classes in `Application` are not all public. Identity's profile operation protects email verification atomically, while Teams handlers explicitly coordinate current-team selection with Identity. Team names are also protected in the create/update use cases, so CLI, jobs, and integrations cannot bypass that invariant. See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership, allowed dependencies, transaction boundaries, deletion policy, and a complete invitation flow.
-
-## Development and verification
+Use these host commands, or prefix with Sail as appropriate:
 
 ```bash
-composer architecture
-composer test
-COMPOSER_PROCESS_TIMEOUT=0 composer coverage
-composer ci:check
-npm run check
-npm run types:check
-npm run build
+php artisan list --no-interaction
 php artisan route:list
-php artisan test --compact --testsuite=Concurrency
+php artisan app:ensure-key --no-interaction
+php artisan migrate --no-interaction
+php artisan test --compact
+composer architecture
+npm run build
+composer ci:check
 ```
 
-`composer test` includes Pint, PHPStan, and the PHP suite. `composer ci:check` adds frontend formatting/lint, an npm security audit at the high severity threshold, a locked Composer dependency audit, frontend type checking, and architecture checks. The PHP audit uses `composer audit --locked --abandoned=fail`: vulnerabilities and abandoned packages fail the gate. Replace or remove abandoned packages; any temporary exception must be reviewed with a reason and removal plan instead of disabling the audit. See the [Composer audit options](https://getcomposer.org/doc/03-cli.md#audit). `composer coverage` enforces the repository's exact line and branch coverage gate; disable Composer's process timeout for this long-running command. CI runs coverage on demand through `workflow_dispatch`, not on every pull request. The workflow must be present on GitHub's default branch before manual dispatch is available; run the local gate before the initial integration and the manual CI gate before publication. The PostgreSQL concurrency suite requires a disposable PostgreSQL database, `pdo_pgsql`, `pcntl`, and `posix`; CI provisions PostgreSQL 16. A skipped concurrency test under SQLite is not evidence of a PostgreSQL pass.
+`ci:check` adds architecture, formatting, PHPStan, frontend types and dependency audits to PHP tests. The ordinary suite uses SQLite in memory; skipped PostgreSQL/opt-in cases are not backend passes. Clear configuration caches before tests. On the host, `COMPOSER_PROCESS_TIMEOUT=0 composer coverage` requires Xdebug and enforces exact 100% lines/branches. The development guide gives the explicit container environment for Sail. CI coverage is on demand, not an automatic PR guarantee; preserve its gates.
 
-After changing routes or controller names, run `php artisan wayfinder:generate --no-interaction` and `npm run build`. Do not edit generated Wayfinder files by hand. For a new module, follow the contract and testing steps in [ARCHITECTURE.md](ARCHITECTURE.md).
+Module tooling: `make:module`, `make:module-usecase`, `make:module-query`, `make:module-seeder`, `make:module-artifact` and `make:module-command`. Check each command's `--help`; generated placeholders/pending tests need implementation. After route/controller changes run `php artisan wayfinder:generate --no-interaction` and build; do not edit generated TypeScript routes.
 
-For PostgreSQL concurrency runs, configure a new empty disposable database, run migrations, then run the suite above with that connection. These tests commit across independent connections and leave fixtures behind; repeating them against the same populated database can collide with earlier fixtures. Never reset a database containing application data to run this suite.
+## Guides
+
+| Guide                                                     | Use it for                                                                                          |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [Local development](docs/development.md)                  | Sail, PostgreSQL persistence/test isolation, optional Redis and troubleshooting.                    |
+| [Modular development](docs/modular-development.md)        | A tested module example, native generators, providers/migrations/seeders and public contracts.      |
+| [Architecture](ARCHITECTURE.md)                           | Data ownership, transaction boundaries, restricted APIs and the complete Teams invitation flow.     |
+| [Production runtime](docs/deployment.md)                  | Same-release PHP/Nginx assets, configuration, migrations, processes, readiness and Docker smoke.    |
+| [AWS reference](docs/aws.md)                              | Opt-in EC2/Compose/private RDS, S3 state, IAM/SSM, HTTPS, costs and recovery limits.                |
+| [Releases and rollback](docs/releases.md)                 | Immutable artifacts, compatible N/N-1 schema, retained-image recovery and backup rehearsals.        |
+| [Contributing](CONTRIBUTING.md) / [Security](SECURITY.md) | Small PRs to dev, quality gates, derived-app updates and proposed private reporting channel status. |
+
+Fortify provides login/logout, password reset, email verification, two-factor authentication, passkeys and password confirmation. Profile/Security own account/settings use cases; Teams supports personal/shared teams, member roles, invitations, explicit switching and the dashboard. Authorization/invariants remain enforced server-side. Cross-module access uses `Application/Api`; internal handlers, ports and Eloquent models are not exported. There is no generic command bus, event store or separate CQRS database.
+
+Production publication/deploy/rollback are prepared, disabled opt-ins with human approval; no actual AWS, zero downtime or published `v0.1.0` is claimed. Optional Octane/FrankenPHP is a separate benchmark; PHP-FPM remains the default. The [feature flag assessment](docs/feature-flags.md) defers business flags until a concrete need exists.
+
+Derived applications own independent Git history and release versions. GitHub template creation **does not propagate upstream updates automatically**. Adapt reviewed upstream changes deliberately, preserving keys, migration history, business data and applicable licenses. The GitHub “Use this template” setting still needs owner activation/promotion; cloning a reviewed revision is the current documented path.
