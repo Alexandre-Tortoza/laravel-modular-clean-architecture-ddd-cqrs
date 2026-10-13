@@ -1,0 +1,16 @@
+services:
+    php:
+        cpus: 2
+        mem_limit: 512m
+        read_only: true
+        tmpfs:
+            - /tmp:uid=33,gid=33,mode=0750
+            - /app/bootstrap/cache:uid=33,gid=33,mode=0750
+            - /app/storage/framework:uid=33,gid=33,mode=0750
+            - /app/storage/logs:uid=33,gid=33,mode=0750
+    nginx:
+        cpus: 0.5
+        mem_limit: 128m
+    pgsql:
+        cpus: 1
+        mem_limit: 256m
