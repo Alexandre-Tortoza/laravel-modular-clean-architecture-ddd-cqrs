@@ -70,16 +70,20 @@ def validate_secret(secret, username):
         raise ValueError('Invalid application key')
 
 
-def fetch(config, aws_cli):
+def instance_profile_environment():
     # Ignore shared profiles and exported credentials. This host boundary uses
     # only its EC2 instance profile, never an operator's permanent access keys.
     environment = {key: value for key, value in os.environ.items() if not key.startswith('AWS_')}
     environment.update(AWS_CONFIG_FILE='/dev/null', AWS_SHARED_CREDENTIALS_FILE='/dev/null',
                        BOTO_CONFIG='/dev/null', AWS_EC2_METADATA_DISABLED='false', AWS_PAGER='', AWS_CLI_AUTO_PROMPT='off')
+    return environment
+
+
+def fetch(config, aws_cli):
     result = subprocess.run([aws_cli, 'secretsmanager', 'get-secret-value', '--region', config['region'],
                              '--secret-id', config['secret_arn'], '--version-stage', 'AWSCURRENT', '--output', 'json',
                              '--no-cli-pager', '--cli-connect-timeout', '5', '--cli-read-timeout', '15'],
-                            env=environment, capture_output=True, text=True, timeout=30, check=False)
+                            env=instance_profile_environment(), capture_output=True, text=True, timeout=30, check=False)
     if result.returncode or len(result.stdout.encode()) > 131072:
         raise ValueError('Runtime secret fetch failed')
     try:

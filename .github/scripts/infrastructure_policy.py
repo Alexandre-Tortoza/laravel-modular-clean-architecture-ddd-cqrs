@@ -23,6 +23,14 @@ def validate_iam(policy):
         actions, resources = statement.get('Action', []), statement.get('Resource', [])
         actions = [actions] if isinstance(actions, str) else actions
         resources = [resources] if isinstance(resources, str) else resources
+        conditions = statement.get('Condition', {}).get('StringEquals', {})
+        metric_namespace = conditions.get('cloudwatch:namespace')
+        metric_region = conditions.get('aws:RequestedRegion')
+        scoped_metric = (
+            actions == ['cloudwatch:PutMetricData'] and resources == ['*'] and
+            isinstance(metric_namespace, str) and re.fullmatch(r'Template/[a-z][a-z0-9-]{0,31}/Runtime', metric_namespace) and
+            isinstance(metric_region, str) and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)+-[0-9]+', metric_region)
+        )
         if statement.get('NotResource') or not resources:
             errors.append('Allow IAM policy must name resources')
         condition = statement.get('Condition', {})
@@ -33,7 +41,7 @@ def validate_iam(policy):
         regional_invocation = (actions == ['ssm:GetCommandInvocation'] and resources == ['*'] and
                                isinstance(region, str) and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', region) is not None)
         for action in actions:
-            if ('*' in action or '?' in action) or (any(resource == '*' for resource in resources) and action not in GLOBAL_ACTIONS and not regional_invocation):
+            if ('*' in action or '?' in action) or (any(resource == '*' for resource in resources) and action not in GLOBAL_ACTIONS and not scoped_metric and not regional_invocation):
                 errors.append('Excessive wildcard IAM permission is forbidden')
             if action.startswith('secretsmanager:') or action == 'kms:Decrypt':
                 if any('*' in resource or '?' in resource for resource in resources):

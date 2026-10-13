@@ -15,6 +15,15 @@ def planned(resource_type, values, unknown=None):
 
 
 class InfrastructurePolicyTest(unittest.TestCase):
+    def test_health_metric_global_permission_requires_one_exact_namespace_and_region(self):
+        action = {'Effect': 'Allow', 'Action': ['cloudwatch:PutMetricData'], 'Resource': ['*'],
+                  'Condition': {'StringEquals': {'cloudwatch:namespace': 'Template/fixture/Runtime', 'aws:RequestedRegion': 'us-east-1'}}}
+        self.assertEqual(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps({'Statement': [action]})})), [])
+        for changed in [dict(action, Condition={}),
+                        dict(action, Condition={'StringEquals': {'cloudwatch:namespace': '*', 'aws:RequestedRegion': 'us-east-1'}}),
+                        dict(action, Action=['cloudwatch:PutMetricData', 'iam:CreateRole'])]:
+            self.assertTrue(validate_plan(planned('aws_iam_role_policy', {'policy': json.dumps({'Statement': [changed]})})))
+
     def test_json_and_hcl_tfvars_cannot_hide_runtime_secrets(self):
         for filename, source in [('terraform.tfvars.json', '{"nested":{"DB_PASSWORD":"canary-secret"}}'),
                                  ('fixture.tfvars', 'APP_KEY = "canary-secret"'),
