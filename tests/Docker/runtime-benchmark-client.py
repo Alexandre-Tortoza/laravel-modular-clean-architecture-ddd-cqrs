@@ -134,7 +134,7 @@ def main():
     def up(index):
         start = time.perf_counter()
         status, _, body = guest.request("/up")
-        assert status == 200 and b"Application up" in body
+        assert status == 200 and json.loads(body) == {"status": "up"}
         return (time.perf_counter() - start) * 1000
 
     def teams(index):
@@ -148,7 +148,7 @@ def main():
         teams(index)
     workloads = []
     for workers in [1, 8]:
-        for name, task in [("up", up), ("teams-owner-outsider-guest", teams)]:
+        for name, task in [("up-json", up), ("teams-owner-outsider-guest", teams)]:
             workloads.append({"endpoint_mix": name, "concurrency": workers, **load(workers, args.requests, task)})
     for client, identifier, slugs, current_slug in expected:
         identity(client, version, identifier, slugs, current_slug)
