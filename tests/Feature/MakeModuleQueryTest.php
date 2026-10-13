@@ -51,6 +51,22 @@ test('module query creates a pending Pest test only when explicitly requested', 
     expect(file_get_contents($test))->toContain('->todo();');
 });
 
+test('module query can coexist with unrelated queries and projections without changing them', function () {
+    $module = $this->querySandbox.'/app/Modules/Example';
+    $files = new Filesystem;
+    $files->ensureDirectoryExists($module.'/Application/Data');
+    $files->ensureDirectoryExists($module.'/Application/Queries');
+    $files->put($module.'/Application/Data/ExistingSummaryData.php', 'existing projection content');
+    $files->put($module.'/Application/Queries/ExistingSummary.php', 'existing query content');
+
+    $this->artisan('make:module-query', ['module' => 'Example', 'name' => 'ReadStatistics'])->assertSuccessful();
+
+    expect($files->get($module.'/Application/Data/ExistingSummaryData.php'))->toBe('existing projection content');
+    expect($files->get($module.'/Application/Queries/ExistingSummary.php'))->toBe('existing query content');
+    expect($files->exists($module.'/Application/Data/ReadStatisticsData.php'))->toBeTrue();
+    expect($files->exists($module.'/Application/Queries/ReadStatistics.php'))->toBeTrue();
+});
+
 test('module query rejects invalid names before creating files', function (string $module, string $name) {
     $this->artisan('make:module-query', ['module' => $module, 'name' => $name])->assertFailed();
 
