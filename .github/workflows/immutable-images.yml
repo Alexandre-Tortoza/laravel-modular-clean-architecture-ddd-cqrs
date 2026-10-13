@@ -91,7 +91,7 @@ jobs:
             (
               cd "$PREVIOUS_SOURCE"
               SOURCE_REVISION="$PREVIOUS_REVISION" RELEASE_VERSION=v0.0.0 RELEASE_DIRECTORY="$GITHUB_WORKSPACE/image-release/previous" \
-                docker buildx bake --file "$GITHUB_WORKSPACE/docker-bake.release.hcl" --progress=plain release
+                docker buildx bake --allow "fs.write=$GITHUB_WORKSPACE/image-release/previous" --file "$GITHUB_WORKSPACE/docker-bake.release.hcl" --progress=plain release
             )
             python3 .github/scripts/image_release.py create --directory image-release/previous --source "$PREVIOUS_SOURCE" --source-revision "$PREVIOUS_REVISION" --version v0.0.0
           fi
