@@ -6,6 +6,8 @@ on:
     paths:
       - infra/aws/**
       - .github/workflows/aws-contract.yml
+      - .github/scripts/infrastructure_policy.py
+      - .github/scripts/test_infrastructure_policy.py
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,7 @@ permissions:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +41,11 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
+      - name: Verify offline policy and mock boundaries
+        run: |
+          python3 "$GITHUB_WORKSPACE/.github/scripts/test_infrastructure_policy.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/infrastructure_policy.py" sources --directory .
+
       - name: Check formatting
         run: terraform fmt -check -recursive
 
@@ -48,5 +55,17 @@ jobs:
       - name: Validate configuration
         run: terraform validate
 
+      - name: Verify isolated operational helpers
+        run: |
+          python3 - <<'PY'
+          import unittest
+          suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() else 1)
+          PY
+
       - name: Verify plan-only reference contract
-        run: terraform test
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform test -verbose -json | python3 "$GITHUB_WORKSPACE/.github/scripts/infrastructure_policy.py" plan
