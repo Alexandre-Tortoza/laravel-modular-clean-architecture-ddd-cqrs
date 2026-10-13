@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ec2-deployment-${{ inputs.environment || 'disabled' }}
+  group: ${{ inputs.environment && format('ec2-deployment-{0}', inputs.environment) || format('rollback-checks-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:

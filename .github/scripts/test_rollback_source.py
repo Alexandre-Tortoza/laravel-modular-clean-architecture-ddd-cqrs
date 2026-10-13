@@ -1,5 +1,10 @@
 import base64
 import json
+import contextlib
+import io
+import subprocess
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 from rollback_source import prepare, recover
@@ -38,6 +43,49 @@ class RollbackSourceTest(unittest.TestCase):
         self.assertEqual(parameters['Operation'],['rollback'])
         self.assertEqual(json.loads(base64.b64decode(parameters['Release'][0])),self.request)
         self.assertEqual(calls[0][calls[0].index('--document-hash')+1],self.target['document_sha256'])
+
+    def test_acknowledged_host_command_is_preserved_when_polling_fails(self):
+        acknowledged=[]
+        command_id='00000000-0000-0000-0000-000000000001'
+        def execute(args):
+            if args[1]=='send-command': return {'Command':{'CommandId':command_id}}
+            raise RuntimeError('PRIVATE_SQL_CANARY')
+        with self.assertRaises(RuntimeError): recover(self.target,self.request,execute,acknowledged.append)
+        self.assertEqual(acknowledged,[dict(command_id=command_id,instance_id=self.target['instance_id'])])
+
+    def test_cli_logs_only_public_ack_before_success_or_poll_timeout(self):
+        from rollback_source import main
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            for name,value in [('target',self.target),('identity',self.identity),('request',self.request)]: (directory/name).write_text(json.dumps(value))
+            arguments=['rollback_source.py','execute','--target',str(directory/'target'),'--identity',str(directory/'identity'),'--request',str(directory/'request')]
+            command_id='00000000-0000-0000-0000-000000000001'
+            receipt={key:self.request['expected_previous'][key] for key in ('source_revision','version','manifest_sha256')}|dict(completed_at='2026-01-01T00:00:00+00:00')
+            for fail in (False,True):
+                def execute(args):
+                    if args[1]=='send-command': return {'Command':{'CommandId':command_id}}
+                    if fail: raise subprocess.TimeoutExpired(['PRIVATE_CANARY'],30)
+                    return dict(CommandId=command_id,InstanceId=self.target['instance_id'],Status='Success',ResponseCode=0,StandardOutputContent=json.dumps(receipt))
+                output,error=io.StringIO(),io.StringIO()
+                with self.subTest(fail=fail),patch('sys.argv',arguments),patch.dict('os.environ',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/main',IMAGE_ROLLBACK_AUTHORIZED='true'),patch('rollback_source.prepare',return_value=self.request['expected_previous']),patch('rollback_source.execute_aws',side_effect=execute),contextlib.redirect_stdout(output),contextlib.redirect_stderr(error):
+                    self.assertEqual(main(),1 if fail else 0)
+                records=[json.loads(line) for line in output.getvalue().splitlines()]
+                self.assertEqual(records[0],dict(command_id=command_id,instance_id=self.target['instance_id']))
+                self.assertEqual(records[1:],[] if fail else [receipt])
+                self.assertNotIn('PRIVATE_CANARY',output.getvalue()+error.getvalue())
+
+    def test_cli_timeout_is_nonzero_and_withholds_private_command_diagnostics(self):
+        from rollback_source import main
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            for name,value in [('target',self.target),('identity',self.identity),('request',self.request)]:
+                (directory/name).write_text(json.dumps(value))
+            arguments=['rollback_source.py','execute','--target',str(directory/'target'),'--identity',str(directory/'identity'),'--request',str(directory/'request')]
+            output=io.StringIO()
+            with patch('sys.argv',arguments),patch.dict('os.environ',GITHUB_EVENT_NAME='workflow_dispatch',GITHUB_REF='refs/heads/main',IMAGE_ROLLBACK_AUTHORIZED='true'),patch('rollback_source.prepare',return_value=self.request['expected_previous']),patch('rollback_source.recover',side_effect=subprocess.TimeoutExpired(['PRIVATE_CANARY'],30)),contextlib.redirect_stderr(output):
+                self.assertEqual(main(),1)
+            self.assertNotIn('PRIVATE_CANARY',output.getvalue())
+            self.assertIn('diagnostics withheld',output.getvalue())
 
 
 if __name__=='__main__': unittest.main()
