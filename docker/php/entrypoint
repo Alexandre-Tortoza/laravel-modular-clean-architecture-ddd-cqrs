@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+umask 0077
+php /app/docker/php/prepare-runtime.php
+exec "$@"
