@@ -3,6 +3,7 @@ set -euo pipefail
 
 image="${1:-laravel-php:smoke}"
 container="laravel-php-smoke-${RANDOM}"
+upload_volume="$container-uploads"
 temporary_directory="$(mktemp -d)"
 stage=environment
 
@@ -22,6 +23,7 @@ cleanup() {
         fi
     fi
     docker rm --force "$container" >/dev/null 2>&1 || true
+    docker volume rm "$upload_volume" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
 }
 trap cleanup EXIT
@@ -32,7 +34,8 @@ test "$(docker image inspect --format '{{.Config.StopSignal}}' "$image")" = SIGQ
 
 application_key="base64:$(openssl rand -base64 32)"
 stage=cli-runtime
-docker run --rm --network none --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid "$image" sh -ec '
+docker volume create "$upload_volume" >/dev/null
+docker run --rm --network none --volume "$upload_volume:/app/storage/app" --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid "$image" sh -ec '
     test "$(id -u)" -ne 0
     test ! -w artisan
     test ! -w vendor/autoload.php
@@ -96,6 +99,7 @@ stage=fpm-start
 docker run --detach --name "$container" \
     --cap-drop ALL --security-opt no-new-privileges \
     --publish 127.0.0.1::9000 \
+    --volume "$upload_volume:/app/storage/app" \
     --mount "type=bind,source=$temporary_directory,target=/tmp/image-smoke,readonly" \
     --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid --env SESSION_DRIVER=file \
     "$image" >/dev/null

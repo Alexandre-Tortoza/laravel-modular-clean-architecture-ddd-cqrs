@@ -3,6 +3,7 @@ services:
         image: '${SMOKE_PHP_IMAGE:?Build the PHP production image first}'
         env_file:
             ['${SMOKE_RUNTIME_ENV_FILE:?Use the disposable smoke runtime file}']
+        volumes: ['app-storage:/app/storage/app']
         depends_on:
             pgsql:
                 condition: service_healthy
@@ -54,6 +55,7 @@ services:
 
 volumes:
     database:
+    app-storage:
 
 networks:
     app:

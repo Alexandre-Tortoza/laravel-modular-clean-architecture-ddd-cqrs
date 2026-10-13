@@ -7,6 +7,7 @@ revision="${3:?Pass the checked-out source SHA as the third argument.}"
 network="laravel-nginx-smoke-${RANDOM}"
 php_container="$network-php"
 nginx_container="$network-nginx"
+upload_volume="$network-uploads"
 temporary_directory="$(mktemp -d)"
 stage=environment
 
@@ -19,6 +20,7 @@ cleanup() {
     fi
     docker rm --force "$nginx_container" "$php_container" >/dev/null 2>&1 || true
     docker network rm "$network" >/dev/null 2>&1 || true
+    docker volume rm "$upload_volume" >/dev/null 2>&1 || true
     rm -rf "$temporary_directory"
 }
 trap cleanup EXIT
@@ -85,9 +87,11 @@ find "$temporary_directory/fixtures" -type d -exec chmod 0755 {} +
 find "$temporary_directory/fixtures" -type f -exec chmod 0644 {} +
 
 docker network create "$network" >/dev/null
+docker volume create "$upload_volume" >/dev/null
 application_key="base64:$(openssl rand -base64 32)"
 docker run --detach --name "$php_container" --network "$network" --network-alias php \
     --cap-drop ALL --security-opt no-new-privileges \
+    --volume "$upload_volume:/app/storage/app" \
     --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid --env SESSION_DRIVER=file \
     "$php_image" >/dev/null
 docker run --detach --name "$nginx_container" --network "$network" \
