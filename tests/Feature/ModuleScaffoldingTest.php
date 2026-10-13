@@ -81,7 +81,7 @@ MIGRATION);
         $invalid = $run([PHP_BINARY, 'artisan', 'make:module', '../Escape', '--no-interaction']);
         expect($invalid->exitCode())->toBe(1)
             ->and(is_dir($fixture.'/app/Escape'))->toBeFalse();
-        $analysis = $run([PHP_BINARY, $root.'/vendor/bin/phpstan', 'analyse', '--configuration='.$root.'/phpstan.neon', '--no-progress', '--error-format=json', $module]);
+        $analysis = $run([PHP_BINARY, $root.'/vendor/bin/phpstan', 'analyse', '--configuration='.$root.'/phpstan.neon', '--no-progress', '--error-format=json', '--memory-limit=1G', $module]);
         expect($analysis->exitCode())->toBe(0, $analysis->output().$analysis->errorOutput());
         $inspector = new ModuleBoundaryInspector($fixture);
         expect($inspector->modules())->toContain('InventoryKit');
