@@ -30,18 +30,19 @@ variable "controlled_deployment" {
 locals {
   deployment_count = var.controlled_deployment == null || var.ec2_host == null || var.container_registry == null || var.github_deployment_identity == null ? 0 : 1
   deployment_contract = local.deployment_count == 0 ? null : {
-    php_repository    = local.repository_urls.php
-    nginx_repository  = local.repository_urls.nginx
-    aws_region        = var.aws_region
-    instance_id       = aws_instance.web[0].id
-    upload_volume_id  = aws_ebs_volume.uploads[0].id
-    project           = var.controlled_deployment.project
-    runtime_directory = "/srv/laravel/runtime"
-    runtime_env_file  = "/srv/laravel/runtime/application.env"
-    upload_directory  = "/srv/laravel/uploads"
-    tls_ca_bundle     = var.controlled_deployment.tls_ca_bundle
-    runner_sha256     = filesha256("${path.module}/scripts/deploy_release.py")
-    compose_sha256    = filesha256("${path.module}/../../compose.production.release.yaml")
+    php_repository         = local.repository_urls.php
+    nginx_repository       = local.repository_urls.nginx
+    aws_region             = var.aws_region
+    instance_id            = aws_instance.web[0].id
+    upload_volume_id       = aws_ebs_volume.uploads[0].id
+    project                = var.controlled_deployment.project
+    runtime_directory      = "/srv/laravel/runtime"
+    runtime_env_file       = "/srv/laravel/runtime/application.env"
+    upload_directory       = "/srv/laravel/uploads"
+    tls_ca_bundle          = var.controlled_deployment.tls_ca_bundle
+    rollback_runner_sha256 = filesha256("${path.module}/scripts/rollback_release.py")
+    runner_sha256          = filesha256("${path.module}/scripts/deploy_release.py")
+    compose_sha256         = filesha256("${path.module}/../../compose.production.release.yaml")
     compose_environment = {
       RUNTIME_ENV_FILE          = "/srv/laravel/runtime/application.env"
       UPLOAD_DIRECTORY          = "/srv/laravel/uploads"
@@ -57,7 +58,8 @@ locals {
     schemaVersion = "2.2"
     description   = "Promote reviewed OCI digests on exactly the selected Laravel host; no rebuild, provisioning or schema rollback."
     parameters = {
-      Release = { type = "String", interpolationType = "ENV_VAR", allowedPattern = "^[A-Za-z0-9+/=]{1,8192}$", description = "Base64 compact public release manifest; never commands or secrets" }
+      Operation = { type = "String", interpolationType = "ENV_VAR", allowedPattern = "^(deploy|rollback)$", default = "deploy", description = "Explicit approved application operation; rollback never changes schema" }
+      Release   = { type = "String", interpolationType = "ENV_VAR", allowedPattern = "^[A-Za-z0-9+/=]{1,8192}$", description = "Base64 compact public release manifest; never commands or secrets" }
     }
     mainSteps = [{
       action = "aws:runShellScript", name = "controlledRelease"
@@ -67,11 +69,13 @@ locals {
           "set -eu; umask 0077",
           "test -n \"$${SSM_Release:-}\"",
           "directory=$(mktemp -d /srv/laravel/runtime/deployment.XXXXXXXX); trap 'rm -rf \"$directory\"' EXIT",
-          "printf '%s' '${base64encode(file("${path.module}/scripts/deploy_release.py"))}' | base64 --decode >\"$directory/runner.py\"",
+          "printf '%s' '${base64encode(file("${path.module}/scripts/deploy_release.py"))}' | base64 --decode >\"$directory/deploy_release.py\"",
+          "printf '%s' '${base64encode(file("${path.module}/scripts/rollback_release.py"))}' | base64 --decode >\"$directory/rollback.py\"",
           "printf '%s' '${base64encode(file("${path.module}/../../compose.production.release.yaml"))}' | base64 --decode >\"$directory/compose.yaml\"",
           "printf '%s' '${base64encode(jsonencode(local.deployment_contract))}' | base64 --decode >\"$directory/contract.json\"",
           "printf '%s' \"$SSM_Release\" | base64 --decode >\"$directory/request.json\"",
-          "python3 \"$directory/runner.py\" --contract \"$directory/contract.json\" --request \"$directory/request.json\" --compose \"$directory/compose.yaml\" --execute"
+          "case \"$${SSM_Operation:-deploy}\" in deploy) runner=deploy_release.py ;; rollback) runner=rollback.py ;; *) exit 1 ;; esac",
+          "python3 \"$directory/$runner\" --contract \"$directory/contract.json\" --request \"$directory/request.json\" --compose \"$directory/compose.yaml\" --execute"
         ]
       }
     }]

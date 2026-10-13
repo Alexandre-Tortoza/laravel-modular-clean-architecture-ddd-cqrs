@@ -34,6 +34,7 @@
             "subject": "",
             "workflow_paths": [
                 ".github/workflows/deploy.yml",
+                ".github/workflows/rollback.yml",
                 ".github/workflows/aws-identity.yml"
             ],
             "environment_node_id": ""
