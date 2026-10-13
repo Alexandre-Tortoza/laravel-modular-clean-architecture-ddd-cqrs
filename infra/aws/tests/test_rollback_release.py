@@ -48,7 +48,7 @@ class RollbackTest(unittest.TestCase):
         self.assertEqual(receipt['contract'], self.before['previous']['contract'])
     def test_stale_identity_missing_previous_incompatible_schema_or_extra_secret_refused_before_side_effects(self):
         for changes in [dict(expected_current=self.a), dict(expected_previous=None), dict(expected_pending=self.a),
-                        dict(target_contract_sha256='f'*64), dict(schema_compatible=False), dict(secret='PRIVATE_CANARY')]:
+                        dict(target_contract_sha256='f'*64), dict(target_contract_sha256='g'*64), dict(expected_current=None), dict(expected_current={}), dict(schema_compatible=False), dict(secret='PRIVATE_CANARY')]:
             runtime = RollbackRuntime()
             with self.subTest(changes=changes), self.assertRaises(ValueError): rollback(self.request | changes, self.store, runtime, Clock())
             self.assertEqual(runtime.events, [])
@@ -107,3 +107,26 @@ class RollbackTest(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+class RollbackSmokeBoundaryTest(unittest.TestCase):
+    def test_private_input_change_and_wrong_https_assets_fail_before_commit(self):
+        from unittest.mock import patch
+        import json
+        from rollback_release import RollbackRuntime as NativeRuntime, private_input_hash
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            inputs = directory / 'application.env'
+            inputs.write_text('APP_KEY=PRIVATE_CANARY\n')
+            inputs.chmod(0o600)
+            configuration = dict(runtime_env_file=str(inputs), tls_ca_bundle='/fixture/ca.pem', compose_environment=dict(TLS_DOMAIN='fixture.invalid', TLS_BIND_IPV4='127.0.0.1'))
+            runtime = NativeRuntime(configuration, directory / 'compose.yaml', directory / 'auth')
+            runtime.input_fingerprint = private_input_hash(inputs)
+            assets = {'schema_version': 1, 'files': {'app.js': 'f'*64}}
+            selected = release() | dict(assets_sha256=contract_hash(assets))
+            with patch.object(runtime, 'command', side_effect=[b'OK', json.dumps(assets).encode()]) as command:
+                runtime.smoke(selected)
+                self.assertTrue(all('--cacert' in call.args[0] and '--insecure' not in call.args[0] for call in command.call_args_list))
+            with patch.object(runtime, 'command', side_effect=[b'OK', b'{}']), self.assertRaises(ValueError): runtime.smoke(selected)
+            inputs.write_text('APP_KEY=CHANGED_PRIVATE_CANARY\n')
+            with patch.object(runtime, 'command') as command, self.assertRaises(ValueError): runtime.smoke(selected)
+            command.assert_not_called()
