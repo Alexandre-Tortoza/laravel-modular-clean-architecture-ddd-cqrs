@@ -1,0 +1,43 @@
+# Production process services. Combine with the web Compose file under the same project.
+# Each container retains its own private bootstrap/cache; never share that directory.
+x-process: &process
+    image: '${PHP_IMAGE:?Select the immutable PHP image reference}'
+    env_file:
+        - '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+    restart: unless-stopped
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 90s
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    networks: [app]
+    logging:
+        driver: json-file
+        options:
+            max-size: '10m'
+            max-file: '3'
+
+services:
+    worker:
+        <<: *process
+        command:
+            [
+                'php',
+                'artisan',
+                'queue:work',
+                '--sleep=3',
+                '--tries=3',
+                '--timeout=60',
+                '--max-time=3600',
+                '--no-interaction',
+            ]
+    scheduler:
+        <<: *process
+        command: ['php', 'artisan', 'schedule:work', '--no-interaction']
+        # The scheduler is independent of web/worker scaling. Keep exactly one instance.
+        deploy:
+            replicas: 1
+
+networks:
+    app:
+        driver: bridge
