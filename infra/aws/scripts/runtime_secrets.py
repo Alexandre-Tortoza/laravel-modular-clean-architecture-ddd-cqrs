@@ -136,7 +136,7 @@ def deliver(config, output, aws_cli):
                                SESSION_CONNECTION='default', REDIS_QUEUE_CONNECTION='default',
                                CACHE_STORE=valkey['cache_store'], SESSION_DRIVER=valkey['session_driver'],
                                QUEUE_CONNECTION=valkey['queue_connection'])
-        literal_keys = SECRET_KEYS | {'DB_DATABASE'}
+        literal_keys = SECRET_KEYS | {'DB_DATABASE', 'REDIS_USERNAME'}
         content = ''.join(f'{key}={laravel_string(value) if key in literal_keys else value}\n' for key, value in environment.items()).encode()
         temporary = '.runtime-' + secrets.token_hex(16)
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)

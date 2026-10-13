@@ -110,7 +110,15 @@ def main():
                 extra = [argument for key, value in overrides.items() for argument in ['-e', f'{key}={value}']]
                 checked(command + ['run', '--rm', '--no-deps', '-T', *extra, '--entrypoint', 'sh', 'php', '-ec',
                                    'php artisan config:cache >/dev/null; exec php /run/valkey-fixture.php rejected'])
-            print('Wrong authentication, mismatched TLS identity and plaintext transport all failed closed; no AWS contacted')
+            checked(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+                     '-keyout', str(certificates / 'untrusted.key'), '-out', str(certificates / 'untrusted.crt'),
+                     '-subj', '/CN=Unrelated disposable CA'])
+            untrusted = directory / 'untrusted.json'
+            untrusted.write_text(json.dumps({'services': {'php': {
+                'volumes': [f'{certificates / "untrusted.crt"}:/etc/ssl/certs/ca-certificates.crt:ro']}}}))
+            checked(command + ['-f', str(untrusted), 'run', '--rm', '--no-deps', '-T', '--entrypoint', 'sh', 'php', '-ec',
+                               'php artisan config:cache >/dev/null; exec php /run/valkey-fixture.php rejected'])
+            print('Wrong authentication, mismatched/untrusted certificates and plaintext transport all failed closed; no AWS contacted')
         finally:
             checked(command + ['down', '--volumes', '--remove-orphans'])
             for kind in ['container', 'volume', 'network']:

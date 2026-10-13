@@ -195,6 +195,13 @@ class RuntimeSecretsTest(unittest.TestCase):
             self.deliver()
             self.assertIn(environment_name + '=redis\n', self.destination.read_text())
 
+    def test_reserved_valkey_username_remains_a_literal_for_native_laravel(self):
+        self.config['valkey'] = {'host': 'fixture.cache.amazonaws.com', 'username': 'null',
+                                 'cache_store': 'redis', 'session_driver': 'database', 'queue_connection': 'database'}
+        self.secret['REDIS_PASSWORD'] = 'fixture-private-password'
+        self.deliver()
+        self.assertIn('REDIS_USERNAME="null"\n', self.destination.read_text())
+
     def test_valkey_rejects_incomplete_secret_or_unsafe_endpoints_and_preserves_existing_file(self):
         self.deliver()
         previous = self.destination.read_bytes()
