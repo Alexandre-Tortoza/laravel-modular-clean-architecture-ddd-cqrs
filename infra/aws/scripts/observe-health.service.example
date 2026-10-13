@@ -1,0 +1,19 @@
+[Unit]
+Description=Publish selected status-only application health observations
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=laravel-runtime
+Group=laravel-runtime
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/template-observation/observe_health.py --config /etc/template-observation/health.json --aws-cli /usr/local/bin/aws --execute
+TimeoutStartSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077

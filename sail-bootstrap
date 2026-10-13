@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+if [ ! -f composer.json ] || [ ! -f composer.lock ]; then
+    printf '%s\n' 'Run this command from the project root with its committed Composer lockfile.' >&2
+    exit 1
+fi
+
+if [ ! -e .env ]; then
+    cp .env.sail.example .env
+fi
+
+# Official Sail bootstrap image, pinned to its verified multi-platform manifest.
+# This only installs locked dependencies. Startup, keys, migrations and seeds stay explicit.
+exec docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --env COMPOSER_HOME=/tmp/composer \
+    --volume "$PWD:/var/www/html" \
+    --workdir /var/www/html \
+    --entrypoint composer \
+    laravelsail/php84-composer:latest@sha256:a2716e93e577c80bca7551126056446c1e06cb141af652ee6932537158108400 \
+    install --no-interaction --prefer-dist
