@@ -177,7 +177,9 @@ for path in /.env /.git/config /composer.json /config/app.php /run/tls/current/p
     test "$(https --output "$directory/denied" --write-out '%{http_code}' "$url$path")" = 404
     ! grep -q 'TLS_PRIVATE_CANARY\|PRIVATE KEY' "$directory/denied"
 done
-if https --header 'Host: attacker.invalid' --fail "$url/login" >/dev/null 2>&1; then exit 1; fi
+test "$(https --header 'Host: attacker.invalid' --output /dev/null --write-out '%{http_code}' "$url/")" = 421
+if curl --noproxy '*' --silent --max-time 5 --cacert "$directory/ca.pem" \
+    --connect-to "attacker.invalid:443:127.0.0.1:$tls_port" https://attacker.invalid/up >/dev/null 2>&1; then exit 1; fi
 container="$("${compose[@]}" ps -q nginx)"
 docker inspect "$container" | python3 -c 'import json,sys; c=json.load(sys.stdin)[0]; assert c["Config"]["User"]=="nginx:nginx"; assert all(not m["RW"] for m in c["Mounts"] if m["Destination"] in ["/run/tls","/run/acme"]); assert not c["NetworkSettings"]["Ports"].get("8080/tcp")'
 stage=offline-renewal-and-reload
