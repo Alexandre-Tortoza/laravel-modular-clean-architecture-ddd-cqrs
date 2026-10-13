@@ -80,7 +80,7 @@ EXPOSE 9000
 STOPSIGNAL SIGQUIT
 CMD ["php-fpm", "--nodaemonize"]
 
-FROM nginx:1.28.2-alpine@sha256:5b4900b042ccfa8b0a73df622c3a60f2322faeb2be800cbee5aa7b44d241649e AS nginx
+FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS nginx
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=assets /app/public /app/public
 RUN rm -f /etc/nginx/conf.d/default.conf \

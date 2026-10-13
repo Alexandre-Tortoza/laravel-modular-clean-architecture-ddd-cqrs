@@ -108,9 +108,13 @@ head -c 2200000 /dev/zero >"$temporary_directory/oversized-body"
 test "$(curl --silent --max-time 10 --header 'Expect:' --data-binary "@$temporary_directory/oversized-body" --output /dev/null --write-out '%{http_code}' "$base_url/login")" = 413
 
 stage=logs-and-shutdown
+curl --silent --fail --max-time 10 "$base_url/up?access_token=NGINX_QUERY_SECRET_CANARY" >/dev/null
+curl --silent --fail --max-time 10 "$base_url/reset-password/NGINX_PATH_SECRET_CANARY" >/dev/null
 docker logs "$nginx_container" >"$temporary_directory/access-logs" 2>&1
 grep -q 'GET /up HTTP/1.1.*200' "$temporary_directory/access-logs"
 grep -q 'client intended to send too large body' "$temporary_directory/access-logs"
+grep -q '/reset-password/\[redacted\]' "$temporary_directory/access-logs"
+! grep -Eq 'NGINX_QUERY_SECRET_CANARY|NGINX_PATH_SECRET_CANARY' "$temporary_directory/access-logs"
 docker stop --time 15 "$nginx_container" "$php_container" >/dev/null
 test "$(docker inspect --format '{{.State.ExitCode}}' "$nginx_container")" = 0
 test "$(docker inspect --format '{{.State.ExitCode}}' "$php_container")" = 0
