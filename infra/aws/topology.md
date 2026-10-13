@@ -1,6 +1,6 @@
 # AWS reference topology
 
-This directory defines the AWS-01 input interface and selected architecture. The application root now defines the VPC, internet gateway, public/private subnets, route tables and restricted security groups with the locked AWS provider. It does not yet create EC2 or RDS. Its partial S3 backend is configured separately; the standalone `bootstrap/state-backend` root defines the reviewed bucket proposal. Neither offline validation nor application setup provisions an environment. Resource implementations belong to AWS-02 through AWS-09; the production-container smoke prerequisite is DOCKER-04 (#17).
+This directory defines the selected EC2 + Compose reference and its network resources, plus opt-in EC2, private RDS, registry, runtime-secret access, deployment, observation and Valkey contracts. Its partial S3 backend is configured separately; the standalone `bootstrap/state-backend` root defines the reviewed bucket proposal. These are resource definitions, not an applied environment. Offline validation and application setup provision nothing. Start with the [AWS guide](../../docs/aws.md) for prerequisites, explicit choices, disabled activation and recovery limits.
 
 ```mermaid
 flowchart LR
@@ -44,12 +44,12 @@ With Terraform 1.10 or later (below 2.0), from the repository root:
 
 ```sh
 terraform -chdir=infra/aws fmt -check -recursive
-terraform -chdir=infra/aws init -backend=false -input=false
+terraform -chdir=infra/aws init -backend=false -input=false -lockfile=readonly
 terraform -chdir=infra/aws validate
 terraform -chdir=infra/aws test
 ```
 
-All test runs explicitly use `command = plan`; both application test files replace the AWS provider with `mock_provider`, require no AWS credentials and make no AWS requests. The standalone bootstrap tests use a mocked AWS provider and are also plan-only. Terraform tests otherwise default to `apply`, so preserve the explicit plan-only boundary when extending them. These checks validate the interface, planned port restrictions and static resource relationships, not live infrastructure, TLS termination or backups. See [Terraform test commands](https://developer.hashicorp.com/terraform/language/tests).
+All test runs explicitly use `command = plan`; the application test files replace the AWS provider with `mock_provider`, require no AWS credentials and make no AWS requests. The standalone bootstrap tests use a mocked AWS provider and are also plan-only. Terraform tests otherwise default to `apply`, so preserve the explicit plan-only boundary when extending them. These checks validate the interface, planned port restrictions and static resource relationships, not live infrastructure, TLS termination or backups. See [Terraform test commands](https://developer.hashicorp.com/terraform/language/tests).
 
 ## Private PostgreSQL resource contract
 
