@@ -1,0 +1,112 @@
+name: Protected AWS identity preparation
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      purpose:
+        description: Approved separate identity
+        required: true
+        type: choice
+        options: [publisher, deploy]
+      environment:
+        description: Existing protected environment recorded in the approved manifest
+        required: true
+        type: string
+      source_revision:
+        description: Full approved source revision from protected main history
+        required: true
+        type: string
+      role_arn:
+        description: Approved role ARN recorded in the manifest (no credentials are assumed)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Exercise fail-closed GitHub protection policies offline
+        run: python3 .github/scripts/test_aws_identity_preflight.py
+      - name: Verify real RSA signatures and negative OIDC identities offline
+        run: node --test .github/scripts/test_github_oidc.mjs
+
+  preflight:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      environment: ${{ steps.protection.outputs.environment }}
+      role_arn: ${{ steps.protection.outputs.role_arn }}
+      source_revision: ${{ steps.protection.outputs.source_revision }}
+    steps:
+      - name: Checkout the trusted dispatched main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require a pre-existing protected environment before scheduling it
+        id: protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDENTITY_PURPOSE: ${{ inputs.purpose }}
+          IDENTITY_ENVIRONMENT: ${{ inputs.environment }}
+          IDENTITY_SOURCE_REVISION: ${{ inputs.source_revision }}
+          IDENTITY_ROLE_ARN: ${{ inputs.role_arn }}
+        run: |
+          python3 .github/scripts/aws_identity_preflight.py \
+            --purpose "$IDENTITY_PURPOSE" --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$IDENTITY_SOURCE_REVISION" --role-arn "$IDENTITY_ROLE_ARN"
+
+  inspect-oidc:
+    needs: [contracts, preflight]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ${{ needs.preflight.outputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout the same trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Recheck the approved immutable environment after human approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDENTITY_PURPOSE: ${{ inputs.purpose }}
+          IDENTITY_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          IDENTITY_SOURCE_REVISION: ${{ needs.preflight.outputs.source_revision }}
+          IDENTITY_ROLE_ARN: ${{ needs.preflight.outputs.role_arn }}
+        run: |
+          umask 0077
+          python3 .github/scripts/aws_identity_preflight.py \
+            --purpose "$IDENTITY_PURPOSE" --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$IDENTITY_SOURCE_REVISION" --role-arn "$IDENTITY_ROLE_ARN" \
+            > "$RUNNER_TEMP/expected-identity.json"
+      - name: Verify only the GitHub identity without any AWS credential exchange
+        run: node .github/scripts/verify_github_oidc.mjs "$RUNNER_TEMP/expected-identity.json"
