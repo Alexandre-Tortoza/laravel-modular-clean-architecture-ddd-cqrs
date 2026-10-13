@@ -1,0 +1,82 @@
+name: PHP production image
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/php/**
+      - tests/Docker/image-smoke.sh
+      - .github/workflows/php-image.yml
+      - composer.json
+      - composer.lock
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - app/**
+      - bootstrap/**
+      - config/**
+      - resources/**
+      - routes/**
+      - public/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install FastCGI test client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libfcgi-bin
+
+      - name: Seed ignored context canaries
+        run: |
+          printf 'DOCKER_CONTEXT_SECRET_CANARY\n' > .env
+          printf 'DOCKER_CONTEXT_AUTH_CANARY\n' > auth.json
+          mkdir -p storage/logs bootstrap/cache public/build
+          printf 'DOCKER_CONTEXT_LOG_CANARY\n' > storage/logs/secret-canary.log
+          printf 'DOCKER_CONTEXT_CACHE_CANARY\n' > bootstrap/cache/config.php
+          printf 'DOCKER_CONTEXT_HOT_CANARY\n' > public/hot
+          printf 'DOCKER_CONTEXT_ASSET_CANARY\n' > public/build/host-canary
+
+      - name: Build production image from lockfiles
+        run: docker build --tag laravel-php:smoke --target runtime .
+
+      - name: Exercise production image
+        run: bash tests/Docker/image-smoke.sh laravel-php:smoke
+
+      - name: Verify ignored secrets never enter image layers
+        run: |
+          docker image save laravel-php:smoke --output /tmp/php-image.tar
+          python - <<'PY'
+          import gzip
+          import re
+          import tarfile
+
+          canary = re.compile(rb'DOCKER_CONTEXT_(SECRET|AUTH|LOG|CACHE|HOT|ASSET)_CANARY')
+          with tarfile.open('/tmp/php-image.tar') as image:
+              for member in image:
+                  if not member.isfile():
+                      continue
+                  stream = image.extractfile(member)
+                  if stream.read(2) == b'\x1f\x8b':
+                      stream.seek(0)
+                      stream = gzip.GzipFile(fileobj=stream)
+                  else:
+                      stream.seek(0)
+                  previous = b''
+                  while chunk := stream.read(1024 * 1024):
+                      if canary.search(previous + chunk):
+                          raise SystemExit('An ignored context canary entered an image layer.')
+                      previous = chunk[-128:]
+          PY
