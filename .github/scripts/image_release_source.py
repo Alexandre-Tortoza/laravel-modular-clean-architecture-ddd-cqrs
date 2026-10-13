@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
-from image_release import file_hash, predecessor, verify_bundle
+from image_release import predecessor, verify_bundle
 from template_release import api, gate_evidence
 
 
