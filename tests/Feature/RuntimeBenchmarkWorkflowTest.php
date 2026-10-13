@@ -20,6 +20,8 @@ test('runtime benchmark requires manual dispatch and preserves equal resource li
     $compose = Yaml::parseFile(base_path('tests/Docker/runtime-benchmark.compose.yaml'));
     expect($compose['services']['php']['cpus'])->toBe(2)
         ->and($compose['services']['php']['mem_limit'])->toBe('512m')
+        ->and($compose['services']['php']['tmpfs'])->toContain('/app/storage/framework/views:uid=33,gid=33,mode=0750')
+        ->not->toContain('/app/storage/framework:uid=33,gid=33,mode=0750')
         ->and($compose['services']['nginx']['cpus'])->toBe(0.5)
         ->and($compose['services']['nginx']['mem_limit'])->toBe('128m');
 });

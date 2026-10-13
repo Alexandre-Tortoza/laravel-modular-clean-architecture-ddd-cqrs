@@ -6,7 +6,9 @@ services:
         tmpfs:
             - /tmp:uid=33,gid=33,mode=0750
             - /app/bootstrap/cache:uid=33,gid=33,mode=0750
-            - /app/storage/framework:uid=33,gid=33,mode=0750
+            - /app/storage/framework/cache:uid=33,gid=33,mode=0750
+            - /app/storage/framework/sessions:uid=33,gid=33,mode=0750
+            - /app/storage/framework/views:uid=33,gid=33,mode=0750
             - /app/storage/logs:uid=33,gid=33,mode=0750
     nginx:
         cpus: 0.5
