@@ -118,8 +118,8 @@ started=true
 "${compose[@]}" exec -T -e SMOKE_ACTION=initialize php php <tests/Docker/production-fixture.php >"$directory/fixture.json"
 http_port="$("${compose[@]}" port nginx 8081 | cut -d: -f2)"
 tls_port="$("${compose[@]}" port nginx 8443 | cut -d: -f2)"
-url="https://$domain:$tls_port"
-https() { curl --noproxy '*' --silent --show-error --max-time 10 --cacert "$directory/cert.pem" --resolve "$domain:$tls_port:127.0.0.1" "$@"; }
+url="https://$domain"
+https() { curl --noproxy '*' --silent --show-error --max-time 10 --cacert "$directory/cert.pem" --connect-to "$domain:443:127.0.0.1:$tls_port" "$@"; }
 http() { curl --noproxy '*' --silent --max-time 10 --header "Host: $domain" "$@"; }
 stage=https-termination
 https --fail "$url/up" >"$directory/up"
@@ -191,7 +191,7 @@ stage=non-webroot-mode
 TLS_CERTIFICATE_MECHANISM=provided "${compose[@]}" up --detach --no-build --force-recreate nginx
 http_port="$("${compose[@]}" port nginx 8081 | cut -d: -f2)"
 tls_port="$("${compose[@]}" port nginx 8443 | cut -d: -f2)"
-url="https://$domain:$tls_port"
+url="https://$domain"
 for attempt in {1..40}; do
     if https --fail "$url/up" >/dev/null 2>&1; then break; fi
     sleep 0.25
@@ -199,7 +199,7 @@ done
 # Recreating changes ephemeral host ports: resolve them again.
 http_port="$("${compose[@]}" port nginx 8081 | cut -d: -f2)"
 tls_port="$("${compose[@]}" port nginx 8443 | cut -d: -f2)"
-url="https://$domain:$tls_port"
+url="https://$domain"
 test "$(http --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$http_port/.well-known/acme-challenge/smoke-token")" = 404
 https --fail "$url/up" >/dev/null
 stage=owned-resource-cleanup
