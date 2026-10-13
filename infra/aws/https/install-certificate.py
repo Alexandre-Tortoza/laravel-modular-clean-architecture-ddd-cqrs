@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 
 
@@ -15,13 +16,31 @@ def checked(command):
 
 
 def install(arguments):
+    # Validate a private snapshot, not files an external issuer may replace concurrently.
+    with tempfile.TemporaryDirectory(prefix="tls-validation-") as directory:
+        certificate = pathlib.Path(directory) / "fullchain.pem"
+        key = pathlib.Path(directory) / "privkey.pem"
+        shutil.copyfile(arguments.fullchain, certificate)
+        shutil.copyfile(arguments.private_key, key)
+        original_certificate, original_key = arguments.fullchain, arguments.private_key
+        arguments.fullchain, arguments.private_key = certificate, key
+        try:
+            install_snapshot(arguments)
+        finally:
+            arguments.fullchain, arguments.private_key = original_certificate, original_key
+
+
+def install_snapshot(arguments):
     os.umask(0o077)
     domain = arguments.domain
     if len(domain) > 253 or not re.fullmatch(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?", domain):
         raise ValueError("Use an explicit lowercase DNS hostname, without wildcards, IPs or URL syntax.")
     certificate = str(arguments.fullchain)
     key = str(arguments.private_key)
-    checked(["openssl", "x509", "-in", certificate, "-noout", "-checkhost", domain])
+    # Some OpenSSL x509 versions return success even for a -checkhost mismatch.
+    # Treat the provided leaf as the explicit temporary trust anchor solely to
+    # verify name, validity and server purpose; issuing-CA trust is the owner's duty.
+    checked(["openssl", "verify", "-trusted", certificate, "-partial_chain", "-verify_hostname", domain, "-purpose", "sslserver", certificate])
     # Require a SAN: CN-only certificates are not accepted by modern browsers.
     extensions = checked(["openssl", "x509", "-in", certificate, "-noout", "-ext", "subjectAltName"])
     if b"DNS:" not in extensions:
@@ -71,6 +90,7 @@ args = parser.parse_args()
 try:
     if args.nginx_gid < 0:
         raise ValueError("Use an explicit non-negative Nginx group ID.")
+    os.umask(0o077)
     install(args)
 except (ValueError, OSError, subprocess.SubprocessError):
     print("Certificate installation rejected: validate domain/SAN/expiry/key and restricted directory ownership. No reload performed.", file=sys.stderr)
