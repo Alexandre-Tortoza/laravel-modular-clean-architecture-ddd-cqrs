@@ -48,3 +48,24 @@ test('managed Valkey TLS retains verified peers credentials and separate logical
     'ordinary username' => ['fixture_app', 'fixture_app'],
     'reserved literal username' => ['null', '"null"'],
 ]);
+
+test('Redis TLS context is enabled only for encrypted URLs so native TCP stays available', function (string $url, ?array $expected) {
+    $environment = $_ENV;
+    $server = $_SERVER;
+    $_ENV['REDIS_URL'] = $url;
+    $_SERVER['REDIS_URL'] = $url;
+
+    try {
+        $configuration = require base_path('config/database.php');
+
+        expect($configuration['redis']['default']['context'] ?? null)->toBe($expected)
+            ->and($configuration['redis']['cache']['context'] ?? null)->toBe($expected);
+    } finally {
+        $_ENV = $environment;
+        $_SERVER = $server;
+    }
+})->with([
+    'default TCP without URL' => ['', null],
+    'explicit TCP URL' => ['redis://fixture.invalid:6379', null],
+    'encrypted managed Valkey' => ['rediss://fixture.cache.amazonaws.com:6379', ['stream' => ['verify_peer' => true, 'verify_peer_name' => true]]],
+]);
