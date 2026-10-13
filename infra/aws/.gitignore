@@ -10,3 +10,4 @@ crash.*.log
 *.auto.tfvars.json
 *.backend.hcl
 *.plan
+__pycache__/
