@@ -242,7 +242,7 @@ jobs:
 
       - name: Verify application contracts in Sail
         run: |
-          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/SetupKeyTest.php tests/Feature/SailBootstrapTest.php
+          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/SetupKeyTest.php tests/Feature/SailBootstrapTest.php tests/Feature/CacheIsolationTest.php
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
 
       - name: Verify PostgreSQL integration and concurrency in the isolated testing database
@@ -288,7 +288,21 @@ jobs:
               }
             '
           done
+          # Real Redis tests are opt-in and use a dedicated database and per-test random prefixes.
+          # Session and queue drivers are deliberately kept on PostgreSQL, independently of cache.
+          docker compose exec -T --user sail \
+            --env RUN_REDIS_TESTS=1 --env APP_ENV=testing \
+            --env CACHE_STORE=redis --env SESSION_DRIVER=database --env QUEUE_CONNECTION=database \
+            --env REDIS_HOST=redis --env REDIS_CACHE_DB=15 \
+            --env DB_CONNECTION=pgsql --env DB_HOST=pgsql --env DB_PORT=5432 \
+            --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
+            laravel.test php artisan test --compact --testsuite=Redis
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM users')" = 0
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM teams')" = 0
           docker compose --profile redis stop redis
+          ./vendor/bin/sail artisan migrate --no-interaction
+          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/CacheIsolationTest.php
           curl --fail http://localhost:8000/up
           curl --fail http://localhost:8000/login > /dev/null
 
