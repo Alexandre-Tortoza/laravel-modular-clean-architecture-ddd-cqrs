@@ -34,6 +34,8 @@ Bootstrap installs locked Composer dependencies and copies `.env.sail.example` o
 
 Open the configured `APP_URL` (the local example is `http://localhost:8000`) and log in. Change `APP_NAME` and `VITE_APP_NAME` for your application's branding, then rebuild. Use `./vendor/bin/sail npm run dev` in another terminal for frontend development; configure ports before startup if they collide.
 
+The first account starts with an unverified email. Before protected dashboard/Teams flows, request verification through the existing page and follow the link in the private local mail log; a deployed application needs its own approved mail transport.
+
 PostgreSQL uses a named volume. Normal `sail stop`/`sail down` preserve it; **`down -v` deletes its data**. Never reset schema/volumes to troubleshoot a database containing application data. Setup is for local development, not production deployment.
 
 ## Without Docker: disposable SQLite development
