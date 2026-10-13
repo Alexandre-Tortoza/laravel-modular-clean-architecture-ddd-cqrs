@@ -41,11 +41,24 @@ def completed(receipt):
     return receipt
 
 
+def completed_retry(request, state):
+    current = state['current']
+    if not current or current.get('operation') != 'rollback' or current.get('request_sha256') != contract_hash(request) or state['pending'] is not None:
+        return None
+    completed(current)
+    previous = completed(state['previous']) if state['previous'] else None
+    target = request['expected_previous'] if request['target'] == 'previous' else request['expected_current']
+    expected_previous = request['expected_current'] if request['target'] == 'previous' else request['expected_previous']
+    if current['release'] != target or current['contract_sha256'] != request['target_contract_sha256'] or current.get('rollback_from') != request['expected_current'] or current.get('recovered_pending') != request['expected_pending'] or (previous['release'] if previous else None) != expected_previous:
+        raise ValueError('Completed rollback target or retained history changed; inspect private state before retry')
+    return current
+
+
 def select_target(request, state):
     validate_rollback_request(request)
+    retry = completed_retry(request, state)
+    if retry: return retry
     current = completed(state['current'])
-    if current.get('operation') == 'rollback' and current.get('request_sha256') == contract_hash(request) and state['pending'] is None:
-        return current
     previous = completed(state['previous']) if state['previous'] else None
     pending = state['pending']
     if current['release'] != request['expected_current'] or (previous['release'] if previous else None) != request['expected_previous'] or (pending['release'] if pending else None) != request['expected_pending']:
@@ -69,8 +82,8 @@ def rollback(request, store, runtime, clock=lambda: datetime.now(timezone.utc)):
     with store.lock():
         state = store.read()
         current = state['current']
-        if current and current.get('operation') == 'rollback' and current.get('request_sha256') == request_sha and state['pending'] is None:
-            completed(current)
+        retry = completed_retry(request, state)
+        if retry:
             runtime.ready(current['release'])
             runtime.processes_ready(current['release'])
             runtime.smoke(current['release'])

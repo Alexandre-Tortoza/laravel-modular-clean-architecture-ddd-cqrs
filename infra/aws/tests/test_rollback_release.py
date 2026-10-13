@@ -70,6 +70,18 @@ class RollbackTest(unittest.TestCase):
         runtime.events.clear()
         self.assertEqual(rollback(self.request, self.store, runtime, Clock()), receipt)
         self.assertEqual(runtime.events, ['ready', 'processes-ready', 'smoke'])
+    def test_completed_retry_rejects_changed_target_or_predecessor_receipt_before_commands(self):
+        rollback(self.request, self.store, RollbackRuntime(), Clock())
+        successful = self.store.read()
+        for mutation in ('target', 'predecessor'):
+            state = copy.deepcopy(successful)
+            if mutation == 'target': state['current']['release'] = self.b
+            else: state['previous'] = None
+            self.store.write(state)
+            runtime = RollbackRuntime()
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): rollback(self.request, self.store, runtime, Clock())
+            self.assertEqual(runtime.events, [])
+
     def test_failed_deployment_recovers_last_completed_current_and_preserves_older_previous(self):
         failed = release('c', 'v1.2.0')
         with self.assertRaises(RuntimeError): deploy(request(self.contract, failed, self.b), self.contract, self.store, RuntimeDouble('ready'), Clock())
