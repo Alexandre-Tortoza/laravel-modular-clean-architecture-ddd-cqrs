@@ -12,6 +12,7 @@ test('private uploads retain minimum permissions even under a permissive process
 
     try {
         expect(Storage::disk('local')->put('uploads/private.txt', 'private upload'))->toBeTrue();
+        clearstatcache();
         expect(fileperms($directory.'/uploads/private.txt') & 0777)->toBe(0600);
         expect(fileperms($directory.'/uploads') & 0777)->toBe(0700);
     } finally {
