@@ -100,6 +100,13 @@ def main():
             if receipt['release'] != selected or runtime.migrations != 1: raise ValueError('Promotion receipt/migration differs')
             deploy(request, contract, store, runtime)
             if runtime.migrations != 1: raise ValueError('A completed retry repeated migration')
+            runtime.compose_command(selected, ['stop', '--timeout', '90', 'worker'])
+            try: deploy(request, contract, store, runtime)
+            except RuntimeError: pass
+            else: raise ValueError('A completed retry accepted a stopped worker')
+            if runtime.migrations != 1 or store.read()['current'] != receipt: raise ValueError('Read-only process retry mutated the completed release')
+            runtime.start_processes(selected)
+            runtime.processes_ready(selected)
             for service in ('php', 'worker', 'scheduler'):
                 container = runtime.compose_command(selected, ['ps', '-q', service]).decode().strip()
                 info = json.loads(runtime.command(['docker', 'inspect', container]))[0]
