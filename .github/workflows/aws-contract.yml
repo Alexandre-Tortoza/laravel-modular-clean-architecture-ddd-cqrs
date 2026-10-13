@@ -55,6 +55,9 @@ jobs:
       - name: Validate configuration
         run: terraform validate
 
+      - name: Verify isolated operational helpers
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
       - name: Verify plan-only reference contract
         shell: bash
         run: |
