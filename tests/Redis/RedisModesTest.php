@@ -21,13 +21,13 @@ beforeEach(function (): void {
     expect(config('queue.default'))->toBe('database');
     expect((int) config('database.redis.cache.database'))->toBe(15);
     expect(config('database.connections.pgsql.database'))->toBe('testing');
-    config(['database.redis.cache.prefix' => config('database.redis.options.prefix').bin2hex(random_bytes(16)).'-']);
+    expect(config('database.redis.options.prefix'))->toMatch('/^redis-tests-[a-f0-9-]{36}-$/');
 });
 
 test('Redis cache stores a real entry with a TTL and invalidates only that entry', function (): void {
     $cache = Cache::store('redis');
     $connection = Redis::connection('cache');
-    $key = 'dashboard-summary';
+    $key = 'dashboard-summary-'.bin2hex(random_bytes(16));
 
     try {
         $cache->put($key, ['active_teams' => 3], 60);
@@ -51,7 +51,7 @@ test('Redis cached values stay isolated across applications and environments', f
     $localCache = Cache::build([...config('cache.stores.redis'), 'prefix' => $local['cache']]);
     $testingCache = Cache::build([...config('cache.stores.redis'), 'prefix' => $testing['cache']]);
     $otherCache = Cache::build([...config('cache.stores.redis'), 'prefix' => $other['cache']]);
-    $key = 'dashboard-summary';
+    $key = 'dashboard-summary-'.bin2hex(random_bytes(16));
 
     try {
         $localCache->put($key, ['active_teams' => 3], 60);
@@ -65,7 +65,7 @@ test('Redis cached values stay isolated across applications and environments', f
 })->group('redis');
 
 test('choosing an unavailable Redis cache throws explicitly and does not fall back to the database', function (): void {
-    $key = 'unavailable-redis-probe';
+    $key = 'unavailable-redis-probe-'.bin2hex(random_bytes(16));
     $process = new Process([PHP_BINARY, '-r', <<<'SCRIPT'
 require 'vendor/autoload.php';
 $app = require 'bootstrap/app.php';

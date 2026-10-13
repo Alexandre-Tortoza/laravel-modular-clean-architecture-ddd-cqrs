@@ -294,6 +294,7 @@ jobs:
             --env RUN_REDIS_TESTS=1 --env APP_ENV=testing \
             --env CACHE_STORE=redis --env SESSION_DRIVER=database --env QUEUE_CONNECTION=database \
             --env REDIS_HOST=redis --env REDIS_CACHE_DB=15 \
+            --env REDIS_PREFIX="redis-tests-$(cat /proc/sys/kernel/random/uuid)-" \
             --env DB_CONNECTION=pgsql --env DB_HOST=pgsql --env DB_PORT=5432 \
             --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
             laravel.test php artisan test --compact --testsuite=Redis
