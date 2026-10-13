@@ -27,7 +27,6 @@ class FixtureRuntime(DockerRuntime):
         super().__init__(contract, compose, directory)
         self.images, self.revision, self.overlay = images, revision, overlay
         self.fail_migration = False
-        self.fail_readiness = False
         self.migrations = 0
     def command(self, arguments, **options):
         if arguments[:2] == ['docker', 'compose']:
@@ -49,11 +48,8 @@ class FixtureRuntime(DockerRuntime):
     def migrate(self, selected):
         self.migrations += 1
         if self.fail_migration:
-            return self.compose_command(selected, ['run', '--rm', '--no-deps', '--entrypoint', 'php', 'migration', '-r', 'exit(23);'])
+            return self.compose_command(selected, ['run', '--rm', '--no-deps', '-T', '--entrypoint', 'php', 'migration', '-r', 'exit(23);'])
         return super().migrate(selected)
-    def ready(self, selected):
-        if self.fail_readiness: raise RuntimeError('Deliberate readiness failure')
-        return super().ready(selected)
     def login(self): raise RuntimeError('AWS login is forbidden in this fixture')
 
 
@@ -98,7 +94,7 @@ def main():
                 info = json.loads(runtime.command(['docker', 'inspect', container]))[0]
                 mounts = [mount for mount in info['Mounts'] if mount['Destination'] == '/app/storage/app']
                 if len(mounts) != 1 or mounts[0]['Source'] != str(directory / 'uploads'): raise ValueError('A process lost the shared EBS fixture bind')
-            runtime.compose_command(selected, ['run', '--rm', '--no-deps', '--entrypoint', 'php', 'migration', '-r', 'if (!is_writable("/app/storage/app")) exit(1); file_put_contents("/app/storage/app/deploy-shared", "retained");'])
+            runtime.compose_command(selected, ['run', '--rm', '--no-deps', '-T', '--entrypoint', 'php', 'migration', '-r', 'if (!is_writable("/app/storage/app")) exit(1); file_put_contents("/app/storage/app/deploy-shared", "retained");'])
             if (directory / 'uploads/deploy-shared').read_text() != 'retained': raise ValueError('Migration did not use the retained upload bind')
             # Repeated failure leaves the successful receipt intact and web ready.
             failed = selected | dict(source_revision='b'*40, version='v0.0.2', manifest_sha256='d'*64)
@@ -109,7 +105,9 @@ def main():
             runtime.ready(selected)
             if store.read()['current'] != receipt: raise ValueError('Failed migration overwrote the receipt')
             runtime.fail_migration = False
-            runtime.fail_readiness = True
+            # Exercise the actual /ready failure with an unreachable Pg fixture host.
+            runtime_file.write_text(runtime_file.read_text().replace('DB_HOST=pgsql\n', 'DB_HOST=unreachable.fixture.invalid\n'))
+            runtime_file.chmod(0o600)
             try: deploy(request | dict(release=failed, previous=selected), contract, store, runtime)
             except RuntimeError: pass
             else: raise ValueError('Readiness failure was accepted')

@@ -19,7 +19,7 @@ variable "controlled_deployment" {
       can(regex("^[a-z][a-z0-9-]{0,40}$", var.controlled_deployment.project)) &&
       can(regex("^[a-z0-9][a-z0-9.-]*\\.[a-z]{2,}$", var.controlled_deployment.tls_domain)) &&
       contains(["provided", "acme-webroot", "acme-dns"], var.controlled_deployment.tls_certificate_mechanism) &&
-      can(cidrhost("${var.controlled_deployment.tls_bind_ipv4}/32", 0)) &&
+      can(cidrhost("${var.controlled_deployment.tls_bind_ipv4}/32", 0)) && !strcontains(var.controlled_deployment.tls_bind_ipv4, ":") &&
       alltrue([for path in [var.controlled_deployment.tls_certificate_directory, var.controlled_deployment.tls_acme_webroot, var.controlled_deployment.database_ca_bundle] : can(regex("^/srv/laravel/[A-Za-z0-9_./-]+$", path)) && !strcontains(path, "..")]) &&
       (var.controlled_deployment.tls_ca_bundle == "" || (can(regex("^/srv/laravel/[A-Za-z0-9_./-]+$", var.controlled_deployment.tls_ca_bundle)) && !strcontains(var.controlled_deployment.tls_ca_bundle, "..")))
     )

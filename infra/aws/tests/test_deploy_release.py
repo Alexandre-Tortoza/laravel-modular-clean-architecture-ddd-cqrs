@@ -138,5 +138,22 @@ class PulledImageBoundaryTest(unittest.TestCase):
                     return value
                 with self.subTest(failure=failure), patch.object(runtime, 'command', side_effect=invalid), self.assertRaises(ValueError): runtime.pull(selected)
 
+    def test_native_readiness_connects_to_the_explicit_host_bind_with_verified_tls(self):
+        from unittest.mock import patch
+        from deploy_release import DockerRuntime
+        for bind, expected in [('0.0.0.0', '127.0.0.1'), ('10.123.1.5', '10.123.1.5')]:
+            with self.subTest(bind=bind), tempfile.TemporaryDirectory() as temporary:
+                contract = {'project': 'fixture', 'tls_ca_bundle': '/fixture/ca.pem', 'compose_environment': {'TLS_DOMAIN': 'fixture.invalid', 'TLS_BIND_IPV4': bind}}
+                runtime = DockerRuntime(contract, 'fixture-compose.yaml', temporary)
+                calls = []
+                def output(arguments, **options):
+                    calls.append(arguments)
+                    return b'[{"State":"running"},{"State":"running"}]' if arguments[:2] == ['docker','compose'] else b'{}'
+                with patch.object(runtime, 'command', side_effect=output): runtime.ready(release())
+                curl = calls[0]
+                self.assertEqual(curl[curl.index('--resolve')+1], 'fixture.invalid:443:' + expected)
+                self.assertEqual(curl[curl.index('--cacert')+1], '/fixture/ca.pem')
+                self.assertNotIn('--insecure', curl)
+
 
 if __name__ == '__main__': unittest.main()

@@ -182,7 +182,7 @@ class DockerRuntime:
         return self.command(['docker', 'compose', '--project-name', self.contract['project'], '--file', str(self.compose), *arguments])
 
     def migrate(self, selected):
-        self.compose_command(selected, ['run', '--rm', '--no-deps', 'migration'])
+        self.compose_command(selected, ['run', '--rm', '--no-deps', '-T', 'migration'])
 
     def stop_processes(self):
         self.command(['docker', 'compose', '--project-name', self.contract['project'], '--file', str(self.compose), 'stop', '--timeout', '90', 'worker', 'scheduler'])
@@ -200,7 +200,9 @@ class DockerRuntime:
 
     def ready(self, selected):
         domain = self.contract['compose_environment']['TLS_DOMAIN']
-        arguments = ['curl', '--fail', '--silent', '--show-error', '--proto', '=https', '--tlsv1.2', '--connect-timeout', '5', '--max-time', '10', '--resolve', domain + ':443:127.0.0.1']
+        bind = str(ipaddress.IPv4Address(self.contract['compose_environment']['TLS_BIND_IPV4']))
+        address = '127.0.0.1' if bind == '0.0.0.0' else bind
+        arguments = ['curl', '--fail', '--silent', '--show-error', '--proto', '=https', '--tlsv1.2', '--connect-timeout', '5', '--max-time', '10', '--resolve', domain + ':443:' + address]
         if self.contract['tls_ca_bundle']:
             arguments += ['--cacert', self.contract['tls_ca_bundle']]
         for _ in range(30):
