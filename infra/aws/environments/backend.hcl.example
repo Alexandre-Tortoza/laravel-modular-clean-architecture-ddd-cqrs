@@ -1,0 +1,5 @@
+# Copy to a local .backend.hcl file after a separately authorized bootstrap.
+# Each environment needs a different key and explicitly scoped IAM access.
+bucket = "<EXISTING_REVIEWED_STATE_BUCKET>"
+key    = "<ENVIRONMENT>/terraform.tfstate"
+region = "<SELECT_STATE_BUCKET_REGION>"

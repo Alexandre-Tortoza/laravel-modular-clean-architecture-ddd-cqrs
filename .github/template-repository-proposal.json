@@ -1,0 +1,55 @@
+{
+  "issue": 49,
+  "status": "prepared_not_applied",
+  "repository": "Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs",
+  "observed": {
+    "at": "2026-10-13T01:49:53+00:00",
+    "method": "GET /repos/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs",
+    "is_template": false,
+    "default_branch": "main",
+    "default_branch_head": "13d2de376dd1a8b76e229255ef89dffee6890c21",
+    "visibility": "public",
+    "archived": false,
+    "authenticated_repository_role_admin": true,
+    "token_administration_write_verified": false,
+    "default_branch_composer_license": "MIT",
+    "default_branch_composer_name": "laravel/vue-starter-kit"
+  },
+  "proposed_change": {
+    "method": "PATCH",
+    "path": "/repos/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs",
+    "body": {
+      "is_template": true
+    },
+    "executed": false
+  },
+  "prerequisites": [
+    "Explicit owner approval for this Settings change, separate from authorization to prepare branches and pull requests.",
+    "Re-read repository state and verify the acting credential has Administration write permission immediately before applying the approved change.",
+    "Integrate the reviewed and validated template into the owner-selected default branch before enabling Use this template. The current main branch is older than the tested development stack; this proposal does not change the default branch or its history.",
+    "Complete the final-head CI and exact line/branch coverage gates for the template chosen for distribution."
+  ],
+  "derivation_evidence": {
+    "issue": 48,
+    "pull_request": "https://github.com/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs/pull/89",
+    "validated_head": "a158ccf3cbe4dcfbfaa6d583c158c0240c0d9d9f",
+    "independent_consumer_run": "https://github.com/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs/actions/runs/38333742243",
+    "independent_consumer_result": "success",
+    "scope": "A disposable local repository with one fresh commit and no remote; clean locked installs, SQLite migrations, custom APP_NAME, stable APP_KEY, zero default demo users/Teams, authentication/Teams tests and frontend build without AWS or Redis. This is not an actual GitHub-derived repository.",
+    "final_head_coverage_run": "https://github.com/Alexandre-Tortoza/laravel-modular-clean-architecture-ddd-cqrs/actions/runs/38333745608",
+    "final_head_coverage_status": "pending_at_preparation"
+  },
+  "after_authorized_enablement": [
+    "Read back is_template=true and confirm Use this template is available for the approved default branch.",
+    "Creating an actual derived GitHub repository requires separate explicit owner authorization and an agreed owner/name/visibility; none is created by this proposal.",
+    "After that separate authorization, confirm the new repository starts with independent history, preserves README and MIT LICENSE notices, and repeats the issue #48 consumer smoke without AWS or Redis."
+  ],
+  "update_policy": "Repositories generated from this template have independent history. Later template changes are not automatically propagated; consumers review and adopt updates explicitly.",
+  "mutations_performed": [],
+  "release_or_tag_created": false,
+  "sources": [
+    "https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository",
+    "https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template",
+    "https://docs.github.com/en/rest/repos/repos#update-a-repository"
+  ]
+}
