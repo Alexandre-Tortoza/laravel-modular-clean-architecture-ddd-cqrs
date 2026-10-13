@@ -3,7 +3,9 @@
 namespace App\Modules\Teams\Infrastructure\Providers;
 
 use App\Modules\Teams\Application\Api\AccountTeamLifecycle;
+use App\Modules\Teams\Application\Api\PersonalTeams;
 use App\Modules\Teams\Application\Api\TeamContext;
+use App\Modules\Teams\Application\Commands\CreateTeamHandler;
 use App\Modules\Teams\Application\Commands\PruneExpiredTeamInvitations;
 use App\Modules\Teams\Application\Commands\PruneExpiredTeamInvitationsHandler;
 use App\Modules\Teams\Application\Contracts\CreatesTeams;
@@ -33,6 +35,7 @@ class TeamsServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(CreatesTeams::class, EloquentTeamCreator::class);
+        $this->app->bind(PersonalTeams::class, CreateTeamHandler::class);
         $this->app->bind(ManagesTeams::class, EloquentTeamManager::class);
         $this->app->bind(ManagesAccountTeams::class, EloquentTeamManager::class);
         $this->app->bind(AccountTeamLifecycle::class, AccountTeamLifecycleService::class);
