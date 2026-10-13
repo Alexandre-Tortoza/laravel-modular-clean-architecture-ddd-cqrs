@@ -33,7 +33,9 @@ class DeploymentSourceTest(unittest.TestCase):
             calls.append(arguments)
             if arguments[1] == 'send-command': return {'Command': {'CommandId': '00000000-0000-0000-0000-000000000001'}}
             return dict(CommandId='00000000-0000-0000-0000-000000000001', InstanceId=self.target['instance_id'], Status='Success', ResponseCode=0, StandardOutputContent=json.dumps(receipt))
-        self.assertEqual(send_and_wait(self.target, self.request, execute, lambda _: None), receipt)
+        acknowledged=[]
+        self.assertEqual(send_and_wait(self.target, self.request, execute, lambda _: None, acknowledged.append), receipt)
+        self.assertEqual(acknowledged, [{'command_id':'00000000-0000-0000-0000-000000000001', 'instance_id':self.target['instance_id']}])
         self.assertEqual(calls[0][calls[0].index('--document-version')+1], '1')
         self.assertEqual(calls[0][calls[0].index('--document-hash')+1], 'a'*64)
         self.assertEqual(calls[0][calls[0].index('--instance-ids')+1], self.target['instance_id'])

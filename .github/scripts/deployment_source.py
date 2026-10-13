@@ -62,7 +62,7 @@ def prepare(target, identity, directory, run_id, revision, version, previous_run
     return request
 
 
-def send_and_wait(target, request, execute, sleep=time.sleep):
+def send_and_wait(target, request, execute, sleep=time.sleep, acknowledged=lambda _: None):
     payload = base64.b64encode(json.dumps(request, sort_keys=True, separators=(',', ':')).encode()).decode()
     if len(payload) > 8192: raise ValueError('The public deployment request exceeds the approved document limit')
     region = target['document_arn'].split(':')[3]
@@ -72,7 +72,8 @@ def send_and_wait(target, request, execute, sleep=time.sleep):
                  '--parameters', json.dumps({'Release': [payload]}), '--output', 'json']
     response = execute(arguments)
     command_id = response.get('Command', {}).get('CommandId', '')
-    if not re.fullmatch('[a-f0-9-]{36}', command_id): raise ValueError('SSM did not acknowledge a concrete command identifier')
+    if not re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', command_id): raise ValueError('SSM did not acknowledge a concrete command identifier')
+    acknowledged({'command_id': command_id, 'instance_id': target['instance_id']})
     for _ in range(450):
         result = execute(['ssm', 'get-command-invocation', '--region', region, '--command-id', command_id, '--instance-id', target['instance_id'], '--output', 'json'])
         if result.get('CommandId') != command_id or result.get('InstanceId') != target['instance_id']:
@@ -131,7 +132,7 @@ def main():
             if os.environ.get('IMAGE_DEPLOY_AUTHORIZED') != 'true': raise ValueError('Deployment execution requires separate explicit owner activation')
             request = json.loads(args.request.read_bytes())
             validate_request(request, target['contract'])
-            print(json.dumps(send_and_wait(target, request, execute_aws), sort_keys=True))
+            print(json.dumps(send_and_wait(target, request, execute_aws, acknowledged=lambda value: print(json.dumps(value, sort_keys=True), flush=True)), sort_keys=True))
         return 0
     except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError):
         print('Controlled deployment failed; private artifact, credential and SSM diagnostics withheld', file=sys.stderr)
