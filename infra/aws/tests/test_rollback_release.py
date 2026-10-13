@@ -76,6 +76,7 @@ class RollbackTest(unittest.TestCase):
         recovery = self.request | dict(expected_pending=failed, target='current')
         receipt = rollback(recovery, self.store, RollbackRuntime(), Clock())
         self.assertEqual(receipt['release'], self.b)
+        self.assertEqual(receipt['recovered_pending'], failed)
         self.assertEqual(self.store.read()['previous'], self.before['previous'])
         self.assertIsNone(self.store.read()['pending'])
     def test_pending_candidate_cannot_be_selected_or_silently_discarded(self):
