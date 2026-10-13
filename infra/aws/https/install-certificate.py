@@ -47,6 +47,7 @@ def install(arguments):
         raise ValueError("The current certificate must be an installer-managed symlink.")
     version = directory / ("certificate-" + uuid.uuid4().hex)
     version.mkdir(mode=0o750)
+    os.chmod(version, 0o750)
     os.chown(version, -1, arguments.nginx_gid)
     for source, name in [(arguments.fullchain, "fullchain.pem"), (arguments.private_key, "privkey.pem")]:
         destination = version / name
