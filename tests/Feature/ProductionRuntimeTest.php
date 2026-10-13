@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Database\Connectors\PostgresConnector;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +30,8 @@ test('runtime preparation caches injected configuration and routes without expos
 
     try {
         $environment = productionRuntimeEnvironment($directory);
+        $environment['DB_SSLMODE'] = 'verify-full';
+        $environment['DB_SSLROOTCERT'] = '/run/rds-ca.pem';
         $result = Process::path(base_path())->env($environment)->run([PHP_BINARY, 'docker/php/prepare-runtime.php']);
         expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput());
         expect($result->output().$result->errorOutput())->not->toContain('runtime-secret-canary', $environment['APP_KEY']);
@@ -37,6 +40,11 @@ test('runtime preparation caches injected configuration and routes without expos
             ->and($configuration['app']['url'])->toBe($environment['APP_URL'])
             ->and($configuration['session']['secure'])->toBeTrue();
         expect(is_file($directory.'/routes.php'))->toBeTrue();
+        $connection = $configuration['database']['connections']['pgsql'];
+        expect($connection['sslrootcert'] ?? null)->toBe('/run/rds-ca.pem');
+        $dsn = (new ReflectionMethod(PostgresConnector::class, 'getDsn'))
+            ->invoke(new PostgresConnector, $connection);
+        expect($dsn)->toContain(';sslmode=verify-full', ';sslrootcert=/run/rds-ca.pem');
 
         $environment['APP_URL'] = 'https://promoted.example.invalid';
         $environment['TRUSTED_PROXIES'] = '10.0.0.2, fd00::/64';

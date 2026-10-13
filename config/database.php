@@ -97,6 +97,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'sslrootcert' => env('DB_SSLROOTCERT'),
             'options' => [
                 PDO::ATTR_TIMEOUT => max(1, (int) env('DB_CONNECT_TIMEOUT', 3)),
             ],
