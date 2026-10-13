@@ -44,6 +44,10 @@ LAUNCHER));
         $generated = $run([PHP_BINARY, 'artisan', 'make:module', 'InventoryKit', '--no-interaction']);
         expect($generated->exitCode())->toBe(0, $generated->output().$generated->errorOutput());
         $module = $fixture.'/app/Modules/InventoryKit';
+        foreach ([['model', 'InventoryEntry', '--factory'], ['controller', 'InventoryEntryController'], ['request', 'StoreInventoryEntryRequest'], ['migration', 'create_inventory_entries_table']] as $artifact) {
+            $resource = $run([PHP_BINARY, 'artisan', 'make:module-artifact', 'InventoryKit', ...$artifact, '--no-interaction']);
+            expect($resource->exitCode())->toBe(0, $resource->output().$resource->errorOutput());
+        }
         $usecase = $run([PHP_BINARY, 'artisan', 'make:module-usecase', 'InventoryKit', 'ArchiveEntries', '--test', '--no-interaction']);
         expect($usecase->exitCode())->toBe(0, $usecase->output().$usecase->errorOutput());
         $files->put($fixture.'/usecase.php', str_replace('{{ autoload }}', var_export($root.'/vendor/autoload.php', true), <<<'USECASE'
@@ -100,6 +104,36 @@ MIGRATION);
             expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput());
             expect($result->output())->toContain('2026_01_01_000000_create_inventory_kit_entries');
         }
+        $files->put($fixture.'/artifacts.php', str_replace('{{ autoload }}', var_export($root.'/vendor/autoload.php', true), <<<'ARTIFACTS'
+<?php
+require {{ autoload }};
+$loader = new Composer\Autoload\ClassLoader;
+$loader->addPsr4('App\\', __DIR__.'/app');
+$loader->register(true);
+$app = require __DIR__.'/bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$factory = App\Modules\InventoryKit\Infrastructure\Persistence\Eloquent\Models\InventoryEntry::factory();
+$entry = $factory->create();
+$controller = new App\Modules\InventoryKit\Presentation\Http\Controllers\InventoryEntryController;
+$request = new App\Modules\InventoryKit\Presentation\Http\Requests\StoreInventoryEntryRequest;
+echo json_encode([
+    'factory' => get_class($factory),
+    'model' => get_class($entry),
+    'count' => $entry->newQuery()->count(),
+    'controller' => $controller instanceof App\Http\Controllers\Controller,
+    'request' => $request instanceof Illuminate\Foundation\Http\FormRequest,
+], JSON_THROW_ON_ERROR);
+ARTIFACTS));
+        $artifacts = $run([PHP_BINARY, 'artifacts.php']);
+        expect($artifacts->exitCode())->toBe(0, $artifacts->output().$artifacts->errorOutput());
+        $artifactResult = json_decode($artifacts->output(), true, flags: JSON_THROW_ON_ERROR);
+        expect($artifactResult)->toBe([
+            'factory' => 'App\\Modules\\InventoryKit\\Infrastructure\\Persistence\\Eloquent\\Factories\\InventoryEntryFactory',
+            'model' => 'App\\Modules\\InventoryKit\\Infrastructure\\Persistence\\Eloquent\\Models\\InventoryEntry',
+            'count' => 1,
+            'controller' => true,
+            'request' => true,
+        ]);
         $database = new PDO('sqlite:'.$fixture.'/database/scaffolding.sqlite');
         expect($database->query("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'inventory_kit_entries'")->fetchColumn())->toBe(1);
         $generatedFiles = array_map(fn ($file): string => $file->getPathname(), $files->allFiles($module, true));
