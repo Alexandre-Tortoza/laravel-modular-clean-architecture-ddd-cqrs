@@ -488,11 +488,13 @@ npm run types:check
 
 Formate também o registro de provider atualizado pelo gerador antes dos checks completos:
 
-````bash
+```bash
 vendor/bin/pint app/Modules/ReferenceCatalog bootstrap/providers.php tests/Feature/ReferenceCatalogLabelsTest.php --format agent
 npm run build
 composer ci:check
-``` O gate global `COMPOSER_PROCESS_TIMEOUT=0 composer coverage` continua exigindo exatamente 100% de linhas e branches: acrescentar o módulo numa aplicação real também exige completar os testes dos novos ramos. O tutorial demonstra comportamento/arquitetura; seus poucos testes não substituem esse gate completo.
+```
+
+O gate global `COMPOSER_PROCESS_TIMEOUT=0 composer coverage` continua exigindo exatamente 100% de linhas e branches: acrescentar o módulo numa aplicação real também exige completar os testes dos novos ramos. O tutorial demonstra comportamento/arquitetura; seus poucos testes não substituem esse gate completo.
 
 Wayfinder gera imports nomeados a partir das rotas reais, por exemplo:
 
@@ -502,7 +504,7 @@ import { index, store } from '@/routes/catalog/labels';
 index(); // URL e método GET gerados
 store(); // URL e método POST gerados
 store.form(); // atributos de formulário; exige --with-form
-````
+```
 
 O plugin de Vite já gera Wayfinder durante o build. Não versione `resources/js/routes`, `actions` ou `wayfinder` gerados. Novas páginas Inertia seguem os componentes e formulários existentes; o exemplo acima é JSON e não acrescenta uma página Vue.
 
