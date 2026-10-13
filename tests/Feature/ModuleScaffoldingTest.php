@@ -44,6 +44,25 @@ LAUNCHER));
         $generated = $run([PHP_BINARY, 'artisan', 'make:module', 'InventoryKit', '--no-interaction']);
         expect($generated->exitCode())->toBe(0, $generated->output().$generated->errorOutput());
         $module = $fixture.'/app/Modules/InventoryKit';
+        $fixtureDatabaseSeeder = $files->get($fixture.'/database/seeders/DatabaseSeeder.php');
+        $generatedSeeder = $run([PHP_BINARY, 'artisan', 'make:module-seeder', 'InventoryKit', 'DemoEntriesSeeder', '--no-interaction']);
+        expect($generatedSeeder->exitCode())->toBe(0, $generatedSeeder->output().$generatedSeeder->errorOutput());
+        $seederClass = 'App\\Modules\\InventoryKit\\Infrastructure\\Persistence\\Seeders\\DemoEntriesSeeder';
+        foreach (['local', 'testing', 'production', 'staging'] as $environmentName) {
+            $seeded = Process::path($fixture)->env([...$environment, 'APP_ENV' => $environmentName])->timeout(120)
+                ->run([PHP_BINARY, 'artisan', 'db:seed', '--class='.$seederClass, '--force', '--no-interaction']);
+            $isAllowed = in_array($environmentName, ['local', 'testing'], true);
+            expect($seeded->exitCode())->toBe($isAllowed ? 0 : 1, $seeded->output().$seeded->errorOutput());
+            if (! $isAllowed) {
+                expect($seeded->output().$seeded->errorOutput())->toContain('Demo data may only be seeded in local or testing environments.');
+            }
+        }
+        expect($files->get($fixture.'/database/seeders/DatabaseSeeder.php'))->toBe($fixtureDatabaseSeeder);
+        $seederPath = $module.'/Infrastructure/Persistence/Seeders/DemoEntriesSeeder.php';
+        $seederContents = $files->get($seederPath);
+        $seederRerun = $run([PHP_BINARY, 'artisan', 'make:module-seeder', 'InventoryKit', 'DemoEntriesSeeder', '--no-interaction']);
+        expect($seederRerun->exitCode())->toBe(1)
+            ->and($files->get($seederPath))->toBe($seederContents);
         $files->put($module.'/routes/web.php', <<<'ROUTES'
 <?php
 use Illuminate\Support\Facades\Route;
