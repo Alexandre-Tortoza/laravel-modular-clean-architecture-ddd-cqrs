@@ -1,7 +1,5 @@
 <?php
 
-use App\Modules\Billing\Infrastructure\Providers\BillingServiceProvider;
-use App\Modules\Catalog\Infrastructure\Providers\CatalogServiceProvider;
 use App\Modules\Fulfillment\Infrastructure\Providers\FulfillmentServiceProvider;
 use App\Modules\Ledger\Infrastructure\Providers\LedgerServiceProvider;
 use App\Modules\Shipping\Infrastructure\Providers\ShippingServiceProvider;
@@ -10,6 +8,7 @@ use Illuminate\Filesystem\Filesystem;
 
 beforeEach(function () {
     $this->moduleSandbox = sys_get_temp_dir().'/make-module-'.bin2hex(random_bytes(8));
+    $this->fixtureModuleSuffix = 'Fixture'.bin2hex(random_bytes(8));
     mkdir($this->moduleSandbox.'/app', 0777, true);
     mkdir($this->moduleSandbox.'/bootstrap');
     $this->app->useAppPath($this->moduleSandbox.'/app');
@@ -33,19 +32,21 @@ afterEach(function () {
 });
 
 test('make module creates minimal PSR-4 scaffolding and appends its provider without rewriting composition', function () {
-    $this->artisan('make:module', ['name' => 'Billing'])->assertSuccessful();
-    $module = $this->moduleSandbox.'/app/Modules/Billing';
-    $provider = $module.'/Infrastructure/Providers/BillingServiceProvider.php';
+    $moduleName = 'Billing'.$this->fixtureModuleSuffix;
+    $providerClass = 'App\\Modules\\'.$moduleName.'\\Infrastructure\\Providers\\'.$moduleName.'ServiceProvider';
+    $this->artisan('make:module', ['name' => $moduleName])->assertSuccessful();
+    $module = $this->moduleSandbox.'/app/Modules/'.$moduleName;
+    $provider = $module.'/Infrastructure/Providers/'.$moduleName.'ServiceProvider.php';
     require $provider;
-    expect(class_exists(BillingServiceProvider::class))->toBeTrue();
+    expect(class_exists($providerClass, false))->toBeTrue();
     expect(file_exists($module.'/routes/web.php'))->toBeTrue()
         ->and(is_dir($module.'/database/migrations'))->toBeTrue();
     $files = (new Filesystem)->allFiles($module, true);
     expect(array_map(fn ($file) => $file->getRelativePathname(), $files))
-        ->toBe(['Infrastructure/Providers/BillingServiceProvider.php', 'database/migrations/.gitkeep', 'routes/web.php']);
+        ->toBe(['Infrastructure/Providers/'.$moduleName.'ServiceProvider.php', 'database/migrations/.gitkeep', 'routes/web.php']);
     expect(file_get_contents($this->moduleSandbox.'/bootstrap/providers.php'))
-        ->toBe(str_replace('];', '    App\\Modules\\Billing\\Infrastructure\\Providers\\BillingServiceProvider::class,'."\n];", $this->providerContents));
-});
+        ->toBe(str_replace('];', '    '.$providerClass.'::class,'."\n];", $this->providerContents));
+})->repeat(2);
 
 test('make module fails on reexecution and preserves existing files and registration', function () {
     $this->artisan('make:module', ['name' => 'Inventory'])->assertSuccessful();
@@ -87,31 +88,39 @@ test('make module rejects unsupported provider composition before creating a mod
 })->with(['<?php return array();', '<?php return false;', "<?php // return [\nreturn array();"]);
 
 test('generated provider boots module web routes and discovers local migrations', function () {
-    $this->artisan('make:module', ['name' => 'Catalog'])->assertSuccessful();
-    $module = $this->moduleSandbox.'/app/Modules/Catalog';
-    file_put_contents($module.'/routes/web.php', <<<'ROUTES'
+    $moduleName = 'Catalog'.$this->fixtureModuleSuffix;
+    $providerClass = 'App\\Modules\\'.$moduleName.'\\Infrastructure\\Providers\\'.$moduleName.'ServiceProvider';
+    $routePath = '/catalog-baseline-'.strtolower($this->fixtureModuleSuffix);
+    $routeName = 'catalog.baseline.'.strtolower($this->fixtureModuleSuffix);
+    $table = 'catalog_items_'.strtolower($this->fixtureModuleSuffix);
+    $migration = '2026_01_01_000000_create_'.$table;
+    $this->artisan('make:module', ['name' => $moduleName])->assertSuccessful();
+    $module = $this->moduleSandbox.'/app/Modules/'.$moduleName;
+    file_put_contents($module.'/routes/web.php', str_replace(['{{ path }}', '{{ name }}'], [$routePath, $routeName], <<<'ROUTES'
 <?php
 use Illuminate\Support\Facades\Route;
-Route::middleware('web')->get('/catalog-baseline', fn () => 'catalog')->name('catalog.baseline');
-ROUTES);
-    file_put_contents($module.'/database/migrations/2026_01_01_000000_create_catalog_items.php', <<<'MIGRATION'
+Route::middleware('web')->get('{{ path }}', fn () => 'catalog')->name('{{ name }}');
+ROUTES));
+    file_put_contents($module.'/database/migrations/'.$migration.'.php', str_replace('{{ table }}', $table, <<<'MIGRATION'
 <?php
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
-    public function up(): void { Schema::create('catalog_items', function (Blueprint $table): void { $table->id(); }); }
-    public function down(): void { Schema::dropIfExists('catalog_items'); }
+    public function up(): void { Schema::create('{{ table }}', function (Blueprint $table): void { $table->id(); }); }
+    public function down(): void { Schema::dropIfExists('{{ table }}'); }
 };
-MIGRATION);
-    require $module.'/Infrastructure/Providers/CatalogServiceProvider.php';
-    $this->app->register(CatalogServiceProvider::class);
-    $this->get('/catalog-baseline')->assertOk()->assertSeeText('catalog');
-    $this->artisan('route:list', ['--path' => 'catalog-baseline'])->assertSuccessful();
+MIGRATION));
+    require $module.'/Infrastructure/Providers/'.$moduleName.'ServiceProvider.php';
+    $this->app->register($providerClass);
+    $this->get($routePath)->assertOk()->assertSeeText('catalog');
+    $this->artisan('route:list', ['--path' => ltrim($routePath, '/'), '--json' => true])->expectsOutputToContain($routeName)->assertSuccessful();
+    $this->assertDatabaseMissing('migrations', ['migration' => $migration]);
     $this->artisan('migrate', ['--no-interaction' => true])->assertSuccessful();
-    $this->assertDatabaseHas('migrations', ['migration' => '2026_01_01_000000_create_catalog_items']);
+    $this->assertDatabaseHas('migrations', ['migration' => $migration]);
+    $this->assertDatabaseCount($table, 0);
     $this->artisan('migrate:status')->assertSuccessful();
-});
+})->repeat(2);
 
 test('provider registration handles a list without a trailing comma and preserves comments', function () {
     $contents = <<<'PROVIDERS'
