@@ -170,5 +170,12 @@
         "Private security reporting channel (#61)",
         "AWS OIDC/STS/publisher/deployment activation (#35/#36)",
         "AWS provisioning, secret reads, DNS/certificates, ECR publication, SSM deployment or application rollback"
+    ],
+    "inherited_after_prepared_base": [
+        {
+            "issue": 60,
+            "source_sha": "84161339e55a84077f0ae59061cc17224646d890",
+            "scope": "Documentation only: executor checks versus mandatory operator functional smoke; no covered PHP/input change."
+        }
     ]
 }
