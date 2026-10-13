@@ -3,13 +3,14 @@
 namespace App\Modules\Teams\Application\Commands;
 
 use App\Modules\Identity\Application\Api\TeamSelectionAccounts;
+use App\Modules\Teams\Application\Api\PersonalTeams;
 use App\Modules\Teams\Application\Contracts\CreatesTeams;
 use App\Modules\Teams\Application\Contracts\RunsTeamTransactions;
 use App\Modules\Teams\Application\Data\TeamData;
 use App\Modules\Teams\Domain\Enums\TeamRole;
 use App\Modules\Teams\Domain\Policies\TeamNamePolicy;
 
-class CreateTeamHandler
+class CreateTeamHandler implements PersonalTeams
 {
     public function __construct(
         private CreatesTeams $teams,
@@ -17,6 +18,11 @@ class CreateTeamHandler
         private TeamSelectionAccounts $selection,
         private TeamNamePolicy $namePolicy,
     ) {}
+
+    public function createFor(int $userId, string $name): void
+    {
+        $this->handle(new CreateTeam(userId: $userId, name: $name, isPersonal: true));
+    }
 
     public function handle(CreateTeam $command): TeamData
     {
