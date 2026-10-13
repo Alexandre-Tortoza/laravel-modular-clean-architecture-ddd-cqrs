@@ -21,7 +21,7 @@ function token(payload = claims, header = { alg: 'RS256', typ: 'JWT', kid: 'fixt
     return prefix + '.' + sign('RSA-SHA256', Buffer.from(prefix), keys.privateKey).toString('base64url');
 }
 
-test('validates signed GitHub claims and exposes only an approved public identity summary', () => {
+await test('validates signed GitHub claims and exposes only an approved public identity summary', () => {
     const result = validateGitHubToken(token(), jwks, expected, now);
     assert.deepEqual(result, { issuer: claims.iss, audience: claims.aud, subject: claims.sub, repository: claims.repository, workflow_revision: claims.sha });
     assert.equal(JSON.stringify(result).includes('eyJ'), false);
@@ -31,11 +31,11 @@ for (const [name, value] of Object.entries({ aud: 'other-cloud', sub: 'repo:owne
     repository_owner_id: '999', environment: 'deploy', environment_node_id: 'foreign-environment', ref_protected: false, sha: 'b'.repeat(40), workflow_sha: 'b'.repeat(40),
     workflow_ref: 'owner/template/.github/workflows/unapproved.yml@refs/heads/main', ref: 'refs/pull/1/merge',
     event_name: 'pull_request_target', iss: 'https://issuer.invalid', exp: now - 1, iat: now + 120, nbf: now + 120 })) {
-    test('rejects wrong ' + name + ' despite a valid cryptographic signature', () => {
+    await test('rejects wrong ' + name + ' despite a valid cryptographic signature', () => {
         assert.throws(() => validateGitHubToken(token({ ...claims, [name]: value }), jwks, expected, now));
     });
 }
-test('rejects unsigned/unknown-key/tampered/multi-audience tokens', () => {
+await test('rejects unsigned/unknown-key/tampered/multi-audience tokens', () => {
     assert.throws(() => validateGitHubToken(token(claims, { alg: 'none', kid: 'fixture' }), jwks, expected, now));
     assert.throws(() => validateGitHubToken(token(claims, { alg: 'RS256', kid: 'unknown' }), jwks, expected, now));
     assert.throws(() => validateGitHubToken(token().slice(0, -8) + 'tampered', jwks, expected, now));
@@ -43,7 +43,7 @@ test('rejects unsigned/unknown-key/tampered/multi-audience tokens', () => {
     assert.throws(() => validateGitHubToken('invalid.jwt.token', jwks, expected, now));
 });
 
-test('stores only an exclusive mode-0600 token inside the real runner temporary directory', () => {
+await test('stores only an exclusive mode-0600 token inside the real runner temporary directory', () => {
     const temporary = mkdtempSync(join(tmpdir(), 'oidc-private-fixture-'));
     const outside = mkdtempSync(join(tmpdir(), 'oidc-outside-fixture-'));
     try {
