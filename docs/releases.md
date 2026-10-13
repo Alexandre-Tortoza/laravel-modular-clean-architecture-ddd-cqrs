@@ -33,11 +33,12 @@ The approved SSM document is bound to one instance, its numeric document version
 
 The host promotion performs this order:
 
-1. Validate retained images, provenance, public contract and unchanged persistent inputs; pull the selected digests.
+1. Validate retained images/provenance, the public contract, private env-file ownership/mode, approved paths, selected EBS volume and Compose/runner hashes; pull the selected digests. Stable secret bytes remain an operator precondition: the deploy executor does not compare runtime env contents before/after promotion.
 2. Run the dedicated controlled migration command once per artifact under the database advisory lock. A migration failure leaves the completed current release running. A successful receipt avoids repeating its DDL on retry.
 3. Record pending state, drain/stop old worker and scheduler with 90-second grace, start the candidate web pair and require trusted HTTPS `/ready`.
-4. Start one worker and one scheduler using the same candidate PHP image, raw runtime environment, PostgreSQL CA and upload bind as web. Recheck readiness and actual processes before committing dated current/previous receipts.
-5. Verify HTTPS liveness/readiness, actual asset hashes, authenticated application flow, persisted data, queue consumption and scheduler singleton. Retain only sanitized public identities/checks and timestamps.
+4. Start one worker and one scheduler using the same candidate PHP image, raw runtime environment, PostgreSQL CA and upload bind as web. Recheck HTTPS readiness and require exactly those two containers running without an unhealthy state before committing dated current/previous receipts. These container-state checks do not prove job consumption or PHP-child readiness.
+
+After that executor receipt, the operator must perform the functional post-deploy smoke: HTTPS liveness/readiness, actual asset hashes, authenticated application flow, persisted data, queue consumption and scheduler singleton. The deploy executor does not automate those application assertions. The disposable release-cycle fixture does exercise them; repeat representative checks on the authorized environment and retain only sanitized identities/checks/timestamps before accepting the rollout.
 
 Completed retries check health/processes without migrating or restarting. A failure after migration preserves completed receipts and a pending phase, stops an unready candidate when possible and requires explicit recovery. Stop further promotions until the actual state is understood. An SSM observation timeout is not evidence that the host command stopped: retain the public acknowledgment UUID/host, inspect that invocation privately and never blindly resend or cancel it.
 
