@@ -85,11 +85,13 @@ COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=assets /app/public /app/public
 RUN rm -f /etc/nginx/conf.d/default.conf \
     && mkdir -p /tmp/nginx/client-body /tmp/nginx/fastcgi \
+        /tmp/nginx/proxy /tmp/nginx/uwsgi /tmp/nginx/scgi \
     && chown -R nginx:nginx /tmp/nginx \
-    && chmod 0750 /tmp/nginx /tmp/nginx/client-body /tmp/nginx/fastcgi \
+    && find /tmp/nginx -type d -exec chmod 0750 {} + \
     && find /app/public -type d -exec chmod 0755 {} + \
     && find /app/public -type f -exec chmod 0644 {} +
 USER nginx:nginx
+RUN nginx -t
 EXPOSE 8080
 STOPSIGNAL SIGQUIT
 ENTRYPOINT ["nginx"]
