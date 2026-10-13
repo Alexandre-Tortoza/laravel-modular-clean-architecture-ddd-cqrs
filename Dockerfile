@@ -53,6 +53,23 @@ RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
     && rm -f bootstrap/cache/*.php \
     && php artisan package:discover --no-interaction
 
+FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS nginx
+COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY --from=assets /app/public /app/public
+RUN rm -f /etc/nginx/conf.d/default.conf \
+    && mkdir -p /tmp/nginx/client-body /tmp/nginx/fastcgi \
+        /tmp/nginx/proxy /tmp/nginx/uwsgi /tmp/nginx/scgi \
+    && chown -R nginx:nginx /tmp/nginx \
+    && find /tmp/nginx -type d -exec chmod 0750 {} + \
+    && find /app/public -type d -exec chmod 0755 {} + \
+    && find /app/public -type f -exec chmod 0644 {} +
+USER nginx:nginx
+RUN nginx -t
+EXPOSE 8080
+STOPSIGNAL SIGQUIT
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
+
 FROM php-base AS runtime
 ENV APP_ENV=production \
     APP_DEBUG=false \
@@ -79,20 +96,3 @@ USER www-data:www-data
 EXPOSE 9000
 STOPSIGNAL SIGQUIT
 CMD ["php-fpm", "--nodaemonize"]
-
-FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS nginx
-COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
-COPY --from=assets /app/public /app/public
-RUN rm -f /etc/nginx/conf.d/default.conf \
-    && mkdir -p /tmp/nginx/client-body /tmp/nginx/fastcgi \
-        /tmp/nginx/proxy /tmp/nginx/uwsgi /tmp/nginx/scgi \
-    && chown -R nginx:nginx /tmp/nginx \
-    && find /tmp/nginx -type d -exec chmod 0750 {} + \
-    && find /app/public -type d -exec chmod 0755 {} + \
-    && find /app/public -type f -exec chmod 0644 {} +
-USER nginx:nginx
-RUN nginx -t
-EXPOSE 8080
-STOPSIGNAL SIGQUIT
-ENTRYPOINT ["nginx"]
-CMD ["-g", "daemon off;"]

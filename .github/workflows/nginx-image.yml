@@ -39,7 +39,7 @@ jobs:
 
       - name: Build PHP and Nginx from the same assets stage
         run: |
-          docker build --tag laravel-php:smoke --target runtime .
+          docker build --tag laravel-php:smoke .
           docker build --tag laravel-nginx:smoke --target nginx .
 
       - name: Exercise HTTP routing and artifact boundaries
