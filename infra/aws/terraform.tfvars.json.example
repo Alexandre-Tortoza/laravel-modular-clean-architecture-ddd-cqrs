@@ -35,8 +35,6 @@
         "owner": "<NAME_COST_REVIEW_OWNER>",
         "monthly_budget": null
     },
-    "web_ingress_ipv4_cidrs": [
-        "<SELECT_ALLOWED_WEB_CLIENT_IPV4_CIDR>"
-    ],
+    "web_ingress_ipv4_cidrs": ["<SELECT_ALLOWED_WEB_CLIENT_IPV4_CIDR>"],
     "enable_http_ingress": false
 }
