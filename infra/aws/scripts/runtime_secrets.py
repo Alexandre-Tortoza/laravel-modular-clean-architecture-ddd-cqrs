@@ -32,7 +32,8 @@ def laravel_string(value):
 
 
 def validate_config(config):
-    if not isinstance(config, dict) or set(config) != {'secret_arn', 'region', 'database_username', 'environment'}:
+    required = {'secret_arn', 'region', 'database_username', 'environment'}
+    if not isinstance(config, dict) or not required <= set(config) or not set(config) <= required | {'valkey'}:
         raise ValueError('Invalid runtime metadata')
     arn = SECRET_ARN.fullmatch(config.get('secret_arn', ''))
     username = config.get('database_username', '')
@@ -45,6 +46,14 @@ def validate_config(config):
         raise ValueError('Invalid production endpoint')
     if not USERNAME.fullmatch(environment['DB_DATABASE']) or len(environment['DB_SSLROOTCERT']) > 4096 or not environment['DB_SSLROOTCERT'].startswith('/'):
         raise ValueError('Invalid PostgreSQL configuration')
+    valkey = config.get('valkey')
+    if valkey is not None:
+        if not isinstance(valkey, dict) or set(valkey) != {'host', 'username', 'cache_store', 'session_driver', 'queue_connection'} or not all(single_line(value) for value in valkey.values()):
+            raise ValueError('Invalid optional Valkey configuration')
+        if len(valkey['host']) > 253 or not re.fullmatch(r'[a-z0-9.-]+\.cache\.amazonaws\.com', valkey['host']) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,127}', valkey['username']) or valkey['username'] == 'default':
+            raise ValueError('Use the reviewed managed endpoint and authenticated application username')
+        if not all(valkey[field] in {'database', 'redis'} for field in ['cache_store', 'session_driver', 'queue_connection']):
+            raise ValueError('Select cache, sessions and queues independently')
 
 
 def validate_secret(secret, username):
@@ -118,6 +127,15 @@ def deliver(config, output, aws_cli):
                        'DB_CONNECTION': 'pgsql', 'DB_PORT': '5432', 'DB_SSLMODE': 'verify-full',
                        'CACHE_STORE': 'database', 'SESSION_DRIVER': 'database', 'QUEUE_CONNECTION': 'database',
                        **config['environment'], **secret}
+        valkey = config.get('valkey')
+        if valkey is not None:
+            if 'REDIS_PASSWORD' not in secret:
+                raise ValueError('The approved application secret must include the operator-managed Valkey password')
+            environment.update(REDIS_CLIENT='phpredis', REDIS_URL=f"rediss://{valkey['host']}:6379",
+                               REDIS_USERNAME=valkey['username'], REDIS_DB='0', REDIS_CACHE_DB='1',
+                               SESSION_CONNECTION='default', REDIS_QUEUE_CONNECTION='default',
+                               CACHE_STORE=valkey['cache_store'], SESSION_DRIVER=valkey['session_driver'],
+                               QUEUE_CONNECTION=valkey['queue_connection'])
         literal_keys = SECRET_KEYS | {'DB_DATABASE'}
         content = ''.join(f'{key}={laravel_string(value) if key in literal_keys else value}\n' for key, value in environment.items()).encode()
         temporary = '.runtime-' + secrets.token_hex(16)

@@ -179,6 +179,38 @@ class RuntimeSecretsTest(unittest.TestCase):
             self.assertEqual(values['APP_KEY'], self.secret['APP_KEY'])
             self.assertEqual(values['DB_SSLMODE'], 'verify-full')
 
+    def test_optional_valkey_selects_each_driver_independently_and_keeps_password_private(self):
+        self.config['valkey'] = {'host': 'fixture.cache.amazonaws.com', 'username': 'fixture_app',
+                                 'cache_store': 'redis', 'session_driver': 'database', 'queue_connection': 'database'}
+        self.secret['REDIS_PASSWORD'] = 'fixture-private-password'
+        self.deliver()
+        content = self.destination.read_text()
+        self.assertIn('REDIS_URL=rediss://fixture.cache.amazonaws.com:6379\n', content)
+        self.assertIn('REDIS_USERNAME=fixture_app\n', content)
+        self.assertIn('CACHE_STORE=redis\nSESSION_DRIVER=database\nQUEUE_CONNECTION=database\n', content)
+        self.assertNotIn('fixture-private-password', content.split('REDIS_URL=')[1].splitlines()[0])
+        for field, environment_name in [('cache_store', 'CACHE_STORE'), ('session_driver', 'SESSION_DRIVER'), ('queue_connection', 'QUEUE_CONNECTION')]:
+            self.config['valkey'].update(cache_store='database', session_driver='database', queue_connection='database')
+            self.config['valkey'][field] = 'redis'
+            self.deliver()
+            self.assertIn(environment_name + '=redis\n', self.destination.read_text())
+
+    def test_valkey_rejects_incomplete_secret_or_unsafe_endpoints_and_preserves_existing_file(self):
+        self.deliver()
+        previous = self.destination.read_bytes()
+        self.config['valkey'] = {'host': 'fixture.cache.amazonaws.com', 'username': 'fixture_app',
+                                 'cache_store': 'database', 'session_driver': 'redis', 'queue_connection': 'database'}
+        with self.assertRaises(ValueError):
+            self.deliver()
+        self.assertEqual(self.destination.read_bytes(), previous)
+        self.secret['REDIS_PASSWORD'] = 'fixture-private-password'
+        for field, value in [('host', 'redis://public.invalid'), ('host', '127.0.0.1'), ('host', 'host\nAPP_DEBUG=true'),
+                             ('username', 'default'), ('cache_store', 'horizon'), ('session_driver', 'file'), ('queue_connection', 'sync')]:
+            config = dict(self.config, valkey=dict(self.config['valkey'], **{field: value}))
+            with self.assertRaises(ValueError):
+                self.load().validate_config(config)
+        self.assertEqual(self.destination.read_bytes(), previous)
+
 
 if __name__ == '__main__':
     unittest.main()

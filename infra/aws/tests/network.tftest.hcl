@@ -122,8 +122,18 @@ run "restricted_resource_relationships" {
   }
   assert {
     condition = alltrue([
-      for tf in fileset(path.module, "*.tf") : length(regexall("resource\\s+\\\"aws_(ecs_[^\\\"]*|lb|lb_[^\\\"]*|nat_gateway|elasticache_[^\\\"]*)\\\"", file("${path.module}/${tf}"))) == 0
+      for tf in fileset(path.module, "*.tf") : length(regexall("resource\\s+\\\"aws_(ecs_[^\\\"]*|lb|lb_[^\\\"]*|nat_gateway)\\\"", file("${path.module}/${tf}"))) == 0
     ])
-    error_message = "The reference network must not require ECS/Fargate, ALB, NAT or optional Redis resources."
+    error_message = "The reference network must not require ECS/Fargate, ALB or NAT resources."
+  }
+  assert {
+    condition = (
+      length(aws_elasticache_replication_group.application) == 0 &&
+      length(aws_elasticache_subnet_group.application) == 0 &&
+      length(aws_security_group.valkey) == 0 &&
+      length(aws_vpc_security_group_ingress_rule.valkey) == 0 &&
+      length(aws_vpc_security_group_egress_rule.valkey) == 0
+    )
+    error_message = "Default reference must allocate no optional Valkey capacity, endpoints or network rules."
   }
 }

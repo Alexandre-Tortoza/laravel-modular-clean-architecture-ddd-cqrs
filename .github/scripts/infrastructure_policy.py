@@ -72,6 +72,14 @@ def validate_plan(plan):
             errors.append(f"{address}: resource outside the reviewed EC2 topology")
         if resource_type == "aws_db_instance" and values.get("publicly_accessible") is not False:
             errors.append(f"{address}: RDS must explicitly remain private")
+        if resource_type == 'aws_elasticache_replication_group':
+            required = {'engine': 'valkey', 'num_cache_clusters': 1, 'cluster_mode': 'disabled',
+                        'automatic_failover_enabled': False, 'multi_az_enabled': False,
+                        'transit_encryption_enabled': True, 'transit_encryption_mode': 'required'}
+            if any(values.get(field) != value for field, value in required.items()) or values.get('at_rest_encryption_enabled') not in {True, 'true'} or len(values.get('user_group_ids') or []) != 1:
+                errors.append(f'{address}: only one authenticated TLS Valkey primary is approved')
+        if resource_type in {'aws_elasticache_cluster', 'aws_elasticache_serverless_cache', 'aws_elasticache_global_replication_group', 'aws_elasticache_user', 'aws_elasticache_user_group'}:
+            errors.append(f'{address}: cache scaling or credential management is outside the optional reference')
         if resource_type in {"aws_security_group", "aws_default_security_group"} and any(values.get(direction) for direction in ["ingress", "egress"]):
             errors.append(f"{address}: inline SG rules are forbidden; use dedicated rule resources")
         if resource_type in {"aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"}:
@@ -82,8 +90,8 @@ def validate_plan(plan):
                 errors.append(f"{address}: only explicit single TCP ports are allowed")
             elif public_source and ports[0] not in {80, 443}:
                 errors.append(f"{address}: CIDR/prefix-list access is limited to HTTP/HTTPS")
-            elif not public_source and (not private_source or ports[0] != 5432):
-                errors.append(f"{address}: private PostgreSQL must reference a security group")
+            elif not public_source and (not private_source or ports[0] not in {5432, 6379}):
+                errors.append(f"{address}: private PostgreSQL/Valkey must reference a security group")
         for name, value in values.items():
             if SECRET_NAMES.search(name) and isinstance(value, str) and value:
                 errors.append(f"{address}: literal sensitive attribute {name} is forbidden")
