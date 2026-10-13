@@ -22,8 +22,14 @@ def main():
                            SMOKE_PHP_IMAGE="fixture.invalid/php:offline",
                            SMOKE_NGINX_IMAGE="fixture.invalid/nginx:offline",
                            SMOKE_RUNTIME_ENV_FILE=str(runtime), SMOKE_DB_DATABASE="smoke_offline",
-                           SMOKE_DB_PASSWORD="offline-disposable-fixture", DB_PASSWORD="offline-disposable-fixture")
+                           SMOKE_DB_PASSWORD="offline-disposable-fixture", DB_PASSWORD="offline-disposable-fixture",
+                           PRODUCTION_PHP_IMAGE="fixture.invalid/php@sha256:" + "0" * 64,
+                           PRODUCTION_NGINX_TLS_IMAGE="fixture.invalid/nginx@sha256:" + "0" * 64,
+                           PRODUCTION_RUNTIME_ENV_FILE=str(runtime), PRODUCTION_UPLOAD_DIRECTORY=str(temporary),
+                           TLS_DOMAIN="fixture.invalid", TLS_CERTIFICATE_MECHANISM="provided",
+                           TLS_CERTIFICATE_DIRECTORY=str(temporary), TLS_ACME_WEBROOT=str(temporary), TLS_BIND_IPV4="127.0.0.1")
         combinations = [
+            (["compose.production.https.yaml"], [], False, False),
             (["compose.yaml"], [], True, False),
             (["compose.yaml"], ["redis"], True, True),
             (["compose.production.smoke.yaml"], [], False, False),
