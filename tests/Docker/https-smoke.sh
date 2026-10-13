@@ -29,9 +29,14 @@ printf 'ephemeral-acme-token\n' >"$directory/acme/.well-known/acme-challenge/smo
 printf 'TLS_PRIVATE_CANARY\n' >"$directory/security/private.pem"
 chmod -R a+rX "$directory/acme" "$directory/security"
 ln -s /run/tls/current/privkey.pem "$directory/security/key-link"
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=Ephemeral HTTPS smoke CA' \
+    -addext 'basicConstraints=critical,CA:true' -keyout "$directory/ca-key.pem" -out "$directory/ca.pem" >/dev/null 2>&1
+printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\nbasicConstraints=critical,CA:false\n' "$domain" >"$directory/leaf-extensions"
 issue_certificate() {
-    openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$domain" \
-        -addext "subjectAltName=DNS:$domain" -keyout "$directory/key.pem" -out "$directory/cert.pem" >/dev/null 2>&1
+    openssl req -new -newkey rsa:2048 -nodes -subj "/CN=$domain" \
+        -keyout "$directory/key.pem" -out "$directory/request.csr" >/dev/null 2>&1
+    openssl x509 -req -in "$directory/request.csr" -CA "$directory/ca.pem" -CAkey "$directory/ca-key.pem" \
+        -set_serial "0x$(openssl rand -hex 16)" -days 2 -extfile "$directory/leaf-extensions" -out "$directory/cert.pem" >/dev/null 2>&1
     sudo python3 infra/aws/https/install-certificate.py --domain "$domain" --mechanism acme-webroot \
         --fullchain "$directory/cert.pem" --private-key "$directory/key.pem" --directory "$directory/tls" --nginx-gid 101
 }
@@ -119,7 +124,7 @@ started=true
 http_port="$("${compose[@]}" port nginx 8081 | cut -d: -f2)"
 tls_port="$("${compose[@]}" port nginx 8443 | cut -d: -f2)"
 url="https://$domain"
-https() { curl --noproxy '*' --silent --show-error --max-time 10 --cacert "$directory/cert.pem" --connect-to "$domain:443:127.0.0.1:$tls_port" "$@"; }
+https() { curl --noproxy '*' --silent --show-error --max-time 10 --cacert "$directory/ca.pem" --connect-to "$domain:443:127.0.0.1:$tls_port" "$@"; }
 http() { curl --noproxy '*' --silent --max-time 10 --header "Host: $domain" "$@"; }
 stage=https-termination
 https --fail "$url/up" >"$directory/up"
@@ -185,7 +190,11 @@ for attempt in {1..40}; do
     sleep 0.25
 done
 https --fail --cookie "$directory/cookies" "$url/settings/teams" >/dev/null
-served_serial="$(openssl s_client -connect "127.0.0.1:$tls_port" -servername "$domain" </dev/null 2>/dev/null | openssl x509 -serial -noout)"
+for attempt in {1..40}; do
+    served_serial="$(openssl s_client -connect "127.0.0.1:$tls_port" -servername "$domain" </dev/null 2>/dev/null | openssl x509 -serial -noout)"
+    if test "$served_serial" = "$(openssl x509 -in "$directory/cert.pem" -serial -noout)"; then break; fi
+    sleep 0.25
+done
 test "$served_serial" = "$(openssl x509 -in "$directory/cert.pem" -serial -noout)"
 stage=non-webroot-mode
 TLS_CERTIFICATE_MECHANISM=provided "${compose[@]}" up --detach --no-build --force-recreate nginx
