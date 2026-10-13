@@ -45,6 +45,7 @@ class Browser:
         self.runtime, self.directory = runtime, directory
         self.cookie = directory / 'cookies'
         self.original_cookie = directory / 'original-session'
+        self.asset_version = 'cycle-stale-version'
 
     def request(self, path, fields=None, inertia=False):
         domain = self.runtime.contract['compose_environment']['TLS_DOMAIN']
@@ -52,7 +53,7 @@ class Browser:
         cookie = self.original_cookie if self.original_cookie.exists() else self.cookie
         args = ['curl', '--silent', '--show-error', '--proto', '=https', '--tlsv1.2', '--max-time', '15', '--cacert', self.runtime.contract['tls_ca_bundle'], '--resolve', domain + ':443:127.0.0.1', '--cookie', str(cookie), '--cookie-jar', str(self.cookie), '--header', 'Accept: application/json', '--output', str(body), '--dump-header', str(headers), '--write-out', '%{http_code}']
         if inertia:
-            args += ['--header', 'X-Inertia: true']
+            args += ['--header', 'X-Inertia: true', '--header', 'X-Inertia-Version: ' + self.asset_version]
         if fields is not None:
             args += ['--header', 'X-XSRF-TOKEN: ' + self.csrf()]
             for key, value in fields.items():
@@ -83,7 +84,15 @@ class Browser:
             raise ValueError('Native authenticated Teams write failed')
 
     def verify(self, owner_id, selected):
-        status, body, _ = self.request('/settings/teams', inertia=True)
+        status, body, headers = self.request('/settings/teams', inertia=True)
+        if status == 409:
+            versions = [line.split(':', 1)[1].strip() for line in headers.splitlines() if line.lower().startswith('x-inertia-version:')]
+            if len(versions) != 1 or not versions[0] or len(versions[0]) > 512:
+                raise ValueError('Native Inertia version conflict omitted its current version')
+            self.asset_version = versions[0]
+            status, body, _ = self.request('/settings/teams', inertia=True)
+        if status != 200:
+            raise ValueError('The original session did not recover the authenticated Inertia page')
         page = json.loads(body)
         if status != 200 or page['component'] != 'teams/Index' or page['props']['auth']['user']['id'] != owner_id or len(page['props']['teams']) != 2:
             raise ValueError('Original authenticated session/Teams data did not survive cutover')

@@ -1,6 +1,8 @@
 import importlib.util
 import os
+import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -31,6 +33,30 @@ class DisposableCycleBoundary(unittest.TestCase):
         with patch.dict(os.environ, dict(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT='github-hosted', RUNNER_OS='Linux'), clear=True), patch.object(cycle, 'command', return_value=b'default\n') as command:
             cycle.require_disposable_runner([])
             command.assert_called_once_with(['docker', 'context', 'show'])
+
+
+class NativeInertiaClient(unittest.TestCase):
+    def test_version_conflict_negotiates_current_header_before_checking_preserved_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            browser = cycle.Browser(None, directory)
+            release = dict(source_revision='a' * 40, files={})
+            selected = dict(source_revision='a' * 40, assets_sha256=cycle.contract_hash(release))
+            page = dict(component='teams/Index', props=dict(auth=dict(user=dict(id=7)), teams=[{}, {}]))
+            responses = [(409, b'', 'HTTP/2 409\nX-Inertia-Version: current-version\n'), (200, json.dumps(page).encode(), ''), (200, json.dumps(release).encode(), '')]
+            with patch.object(browser, 'request', side_effect=responses) as request:
+                browser.verify(7, selected)
+            self.assertEqual(browser.asset_version, 'current-version')
+            self.assertEqual(request.call_args_list[1].args, ('/settings/teams',))
+            self.assertEqual(request.call_args_list[1].kwargs, dict(inertia=True))
+
+    def test_version_conflict_without_current_header_is_not_blindly_retried(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            browser = cycle.Browser(None, Path(temporary))
+            with patch.object(browser, 'request', return_value=(409, b'', 'HTTP/2 409\n')) as request:
+                with self.assertRaises(ValueError):
+                    browser.verify(7, {})
+                request.assert_called_once_with('/settings/teams', inertia=True)
 
 
 if __name__ == '__main__':
