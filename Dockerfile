@@ -59,9 +59,10 @@ RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
 FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS nginx
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
-COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY docker/nginx/nginx.conf docker/nginx/http.conf docker/nginx/application.conf /etc/nginx/
 COPY --from=assets /app/public /app/public
-RUN rm -f /etc/nginx/conf.d/default.conf \
+RUN sed -i '/^[[:space:]]*fastcgi_param[[:space:]]*SERVER_PORT[[:space:]]/d' /etc/nginx/fastcgi_params \
+    && rm -f /etc/nginx/conf.d/default.conf \
     && mkdir -p /tmp/nginx/client-body /tmp/nginx/fastcgi \
         /tmp/nginx/proxy /tmp/nginx/uwsgi /tmp/nginx/scgi \
     && chown -R nginx:nginx /tmp/nginx \
@@ -76,6 +77,12 @@ ENTRYPOINT ["nginx"]
 CMD ["-g", "daemon off;"]
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
     CMD wget --quiet --spider http://127.0.0.1:8080/up || exit 1
+
+FROM nginx AS nginx-tls
+COPY docker/nginx/tls.conf.template /etc/nginx/tls.conf.template
+COPY --chmod=0755 docker/nginx/tls-entrypoint /usr/local/bin/tls-entrypoint
+EXPOSE 8081 8443
+ENTRYPOINT ["/usr/local/bin/tls-entrypoint"]
 
 FROM php-base AS runtime
 ARG SOURCE_REVISION
