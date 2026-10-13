@@ -56,6 +56,11 @@ class Ec2BootstrapTest(unittest.TestCase):
             "TEST_TYPES": "disk",
             "TEST_FILESYSTEM": "ext4",
             "TEST_SIGNATURE": "",
+            "TEST_BLKID_STATUS": "0",
+            "TEST_WIPEFS_STATUS": "0",
+            "TEST_TYPES_STATUS": "0",
+            "TEST_UUID_STATUS": "0",
+            "TEST_FINDMNT_STATUS": "0",
             "TEST_MOUNTED": "1",
             "TEST_MOUNT_UUID": "fixture-uuid",
             "TEST_UPLOADS": str(self.uploads),
@@ -70,19 +75,23 @@ test() {
 }
 lsblk() {
     if [[ $* == *--nodeps* ]]; then printf '%s %s\n' "$TEST_DEVICE" "$TEST_SERIAL";
-    else printf '%s\n' "$TEST_TYPES"; fi
+    else printf '%s\n' "$TEST_TYPES"; return "$TEST_TYPES_STATUS"; fi
 }
 blkid() {
     if [[ $* == *TYPE* ]]; then
+        [[ $TEST_BLKID_STATUS == 0 ]] || return "$TEST_BLKID_STATUS"
         [[ -n $TEST_FILESYSTEM ]] || return 2
         printf '%s\n' "$TEST_FILESYSTEM"
-    else printf '%s\n' fixture-uuid; fi
+    else
+        [[ $TEST_UUID_STATUS == 0 ]] || return "$TEST_UUID_STATUS"
+        printf '%s\n' fixture-uuid
+    fi
 }
-wipefs() { printf '%s' "$TEST_SIGNATURE"; }
+wipefs() { printf '%s' "$TEST_SIGNATURE"; return "$TEST_WIPEFS_STATUS"; }
 mkfs.ext4() { printf 'format %s\n' "$*" >> "$TEST_LOG"; }
 mountpoint() { return "$TEST_MOUNTED"; }
 mount() { printf 'mount %s\n' "$*" >> "$TEST_LOG"; }
-findmnt() { printf '%s\n' "$TEST_MOUNT_UUID"; }
+findmnt() { printf '%s\n' "$TEST_MOUNT_UUID"; return "$TEST_FINDMNT_STATUS"; }
 chown() { printf 'ownership %s\n' "$*" >> "$TEST_LOG"; }
 install() {
     [[ $* == "-d -o 33 -g 33 -m 0750 $TEST_UPLOADS/private $TEST_UPLOADS/public" ]] || return 1
@@ -139,6 +148,30 @@ sleep() { :; }
         result = self.run_storage(TEST_MOUNTED="0", TEST_MOUNT_UUID="wrong-uuid")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.commands(), "")
+
+    def test_wipefs_read_failure_cannot_authorize_formatting(self):
+        result = self.run_storage(initialize=True, TEST_FILESYSTEM="", TEST_WIPEFS_STATUS="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.commands(), "")
+
+    def test_blkid_errors_cannot_authorize_formatting(self):
+        for status in ("1", "4", "8"):
+            with self.subTest(status=status):
+                result = self.run_storage(initialize=True, TEST_FILESYSTEM="", TEST_BLKID_STATUS=status)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.commands(), "")
+
+    def test_failed_partition_or_mount_metadata_cannot_authorize_storage(self):
+        for state in (
+            {"TEST_TYPES_STATUS": "1"},
+            {"TEST_MOUNTED": "0", "TEST_UUID_STATUS": "4"},
+            {"TEST_MOUNTED": "0", "TEST_FINDMNT_STATUS": "1"},
+            {"TEST_MOUNTED": "0", "TEST_MOUNT_UUID": ""},
+        ):
+            with self.subTest(state=state):
+                result = self.run_storage(initialize=True, **state)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.commands(), "")
 
 
 if __name__ == "__main__":

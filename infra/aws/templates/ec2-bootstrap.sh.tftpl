@@ -61,17 +61,28 @@ test -b "$device"
 # Fail closed on ambiguity, partitions or existing signatures; formatting a new
 # empty volume requires the separate, explicit initialization input.
 test "$(printf '%s\n' "$device" | wc -l)" -eq 1
-test "$(lsblk --noheadings --output TYPE "$device" | wc -l)" -eq 1
-filesystem=$(blkid -s TYPE -o value "$device" || true)
+device_types=$(lsblk --noheadings --output TYPE "$device")
+test "$(printf '%s\n' "$device_types" | wc -l)" -eq 1
+if filesystem=$(blkid --probe -s TYPE -o value "$device"); then
+    :
+else
+    probe_status=$?
+    test "$probe_status" -eq 2 || exit "$probe_status"
+    filesystem=''
+fi
 if test -z "$filesystem"; then
     test '${initialize_upload_volume}' = true || { echo 'Upload EBS is unformatted; explicit initialization approval is required.' >&2; exit 1; }
-    test -z "$(wipefs --noheadings --output TYPE "$device")"
+    signatures=$(wipefs --noheadings --output TYPE "$device")
+    test -z "$signatures"
     mkfs.ext4 -q "$device"
     filesystem=ext4
 fi
 test "$filesystem" = ext4
 if mountpoint --quiet /srv/laravel/uploads; then
-    test "$(findmnt --noheadings --output UUID /srv/laravel/uploads)" = "$(blkid -s UUID -o value "$device")"
+    mounted_uuid=$(findmnt --noheadings --output UUID /srv/laravel/uploads)
+    device_uuid=$(blkid --probe -s UUID -o value "$device")
+    test -n "$mounted_uuid"
+    test "$mounted_uuid" = "$device_uuid"
 else
     mount -t ext4 -o nodev,nosuid,noexec "$device" /srv/laravel/uploads
 fi
