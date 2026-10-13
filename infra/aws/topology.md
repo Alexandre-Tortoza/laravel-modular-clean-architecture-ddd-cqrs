@@ -1,6 +1,6 @@
 # AWS reference topology
 
-This directory defines the AWS-01 input interface and selected architecture. It contains **no resources, data sources, AWS provider or backend**. It does not provision an environment. Resource implementations belong to AWS-02 through AWS-09; the production-container smoke prerequisite is DOCKER-04 (#17).
+This directory defines the AWS-01 input interface and selected architecture. The application root contains **no resources, data sources or AWS provider**. Its partial S3 backend is configured separately; the standalone `bootstrap/state-backend` root defines the reviewed bucket proposal. Neither offline validation nor application setup provisions an environment. Resource implementations belong to AWS-02 through AWS-09; the production-container smoke prerequisite is DOCKER-04 (#17).
 
 ```mermaid
 flowchart LR
@@ -49,4 +49,4 @@ terraform -chdir=infra/aws validate
 terraform -chdir=infra/aws test
 ```
 
-All test runs explicitly use `command = plan`; the current contract has no provider or resources, requires no AWS credentials and makes no AWS requests. Terraform tests otherwise default to `apply`, so preserve the explicit plan-only boundary when extending them. These checks validate the reference interface, not live infrastructure or backups. See [Terraform test commands](https://developer.hashicorp.com/terraform/language/tests).
+All test runs explicitly use `command = plan`; the application contract has no provider or resources, requires no AWS credentials and makes no AWS requests. The standalone bootstrap tests use a mocked AWS provider and are also plan-only. Terraform tests otherwise default to `apply`, so preserve the explicit plan-only boundary when extending them. These checks validate the reference interface, not live infrastructure or backups. See [Terraform test commands](https://developer.hashicorp.com/terraform/language/tests).

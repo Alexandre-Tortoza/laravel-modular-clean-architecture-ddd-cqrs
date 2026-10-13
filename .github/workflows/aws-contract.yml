@@ -19,13 +19,14 @@ jobs:
       fail-fast: false
       matrix:
         terraform: ['1.10.5', '1.16.5']
+        directory: ['infra/aws', 'infra/aws/bootstrap/state-backend']
     env:
       TF_IN_AUTOMATION: 'true'
       TF_INPUT: 'false'
       AWS_EC2_METADATA_DISABLED: 'true'
     defaults:
       run:
-        working-directory: infra/aws
+        working-directory: ${{ matrix.directory }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,7 +43,7 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Initialize without a backend
-        run: terraform init -backend=false -input=false
+        run: terraform init -backend=false -input=false -lockfile=readonly
 
       - name: Validate configuration
         run: terraform validate
