@@ -7,7 +7,7 @@ import re
 import sys
 
 
-SECRET_NAMES = re.compile(r"(?:password|secret_string|secret_key|access_key|app_key|auth_token)$", re.I)
+SECRET_NAMES = re.compile(r"(?:passwords?(?:_wo)?|secret_string|secret_key|access_key|app_key|auth_token(?:_wo)?)$", re.I)
 TOKENS = re.compile(r'#[^\n]*|//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z_0-9]*|[^\s]', re.S)
 GLOBAL_ACTIONS = {'ecr:GetAuthorizationToken', 'ssm:UpdateInstanceInformation',
                   'ec2:DescribeVolumes', 'ec2:DescribeSnapshots',

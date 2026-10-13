@@ -99,6 +99,14 @@ class InfrastructurePolicyTest(unittest.TestCase):
             self.assertTrue(any("command = plan" in message for message in result))
             self.assertNotIn("do-not-print-secret-canary", str(result))
 
+    def test_valkey_literal_auth_token_and_password_variants_are_rejected_before_state(self):
+        for field in ['auth_token', 'auth_token_wo', 'passwords', 'passwords_wo']:
+            with tempfile.TemporaryDirectory() as directory:
+                (pathlib.Path(directory) / 'unsafe.tf').write_text(field + ' = "canary-private-credential"\n')
+                errors = validate_sources(directory)
+                self.assertTrue(errors, field)
+                self.assertNotIn('canary-private-credential', str(errors))
+
     def test_sources_allow_secret_references_and_plan_only_mock_tests(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
