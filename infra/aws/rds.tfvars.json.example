@@ -1,0 +1,19 @@
+{
+    "rds": {
+        "identifier": "<SELECT_RDS_IDENTIFIER>",
+        "engine_version": "<SELECT_FULL_POSTGRESQL_16_VERSION>",
+        "availability_zone": "<SELECT_PRIVATE_DATABASE_AZ>",
+        "database_name": "<SELECT_DATABASE_NAME>",
+        "master_username": "<SELECT_ADMINISTRATOR_USERNAME>",
+        "application_username": "<SELECT_NON_ADMIN_APPLICATION_USERNAME>",
+        "storage_kms_key_arn": "<SELECT_REGIONAL_STORAGE_KMS_KEY_ARN>",
+        "admin_secret_kms_key_arn": "<SELECT_REGIONAL_ADMIN_SECRET_KMS_KEY_ARN>",
+        "ca_cert_identifier": "<SELECT_SUPPORTED_RDS_CA>",
+        "deletion_protection": null,
+        "final_snapshot_identifier": "<SELECT_UNIQUE_FINAL_SNAPSHOT_NAME>",
+        "max_allocated_storage_gib": null,
+        "auto_minor_version_upgrade": null,
+        "backup_window": "<SELECT_UTC_BACKUP_WINDOW>",
+        "maintenance_window": "<SELECT_UTC_MAINTENANCE_WINDOW>"
+    }
+}
