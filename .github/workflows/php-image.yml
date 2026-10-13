@@ -50,7 +50,7 @@ jobs:
           printf 'DOCKER_CONTEXT_ASSET_CANARY\n' > public/build/host-canary
 
       - name: Build production image from lockfiles
-        run: docker build --tag laravel-php:smoke --target runtime .
+        run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --tag laravel-php:smoke --target runtime .
 
       - name: Exercise production image
         run: bash tests/Docker/image-smoke.sh laravel-php:smoke

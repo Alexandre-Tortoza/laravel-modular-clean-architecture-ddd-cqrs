@@ -39,8 +39,9 @@ jobs:
 
       - name: Build PHP and Nginx from the same assets stage
         run: |
-          docker build --tag laravel-php:smoke .
-          docker build --tag laravel-nginx:smoke --target nginx .
+          revision="$(git rev-parse HEAD)"
+          docker build --build-arg "SOURCE_REVISION=$revision" --tag laravel-php:smoke .
+          docker build --build-arg "SOURCE_REVISION=$revision" --tag laravel-nginx:smoke --target nginx .
 
       - name: Exercise HTTP routing and artifact boundaries
-        run: bash tests/Docker/nginx-smoke.sh laravel-php:smoke laravel-nginx:smoke
+        run: bash tests/Docker/nginx-smoke.sh laravel-php:smoke laravel-nginx:smoke "$(git rev-parse HEAD)"
