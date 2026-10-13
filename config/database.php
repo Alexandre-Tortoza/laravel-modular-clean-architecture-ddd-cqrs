@@ -3,6 +3,10 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$redisTlsContext = in_array(parse_url((string) env('REDIS_URL'), PHP_URL_SCHEME), ['rediss', 'tls', 'valkeys'], true)
+    ? ['stream' => ['verify_peer' => true, 'verify_peer_name' => true]]
+    : null;
+
 return [
 
     /*
@@ -166,6 +170,7 @@ return [
             'database' => env('REDIS_DB', '0'),
             'timeout' => (float) env('REDIS_CONNECT_TIMEOUT', 3),
             'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 3),
+            'context' => $redisTlsContext,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -181,6 +186,7 @@ return [
             'database' => env('REDIS_CACHE_DB', '1'),
             'timeout' => (float) env('REDIS_CONNECT_TIMEOUT', 3),
             'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 3),
+            'context' => $redisTlsContext,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

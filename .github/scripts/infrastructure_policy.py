@@ -7,7 +7,7 @@ import re
 import sys
 
 
-SECRET_NAMES = re.compile(r"(?:password|secret_string|secret_key|access_key|app_key|auth_token)$", re.I)
+SECRET_NAMES = re.compile(r"(?:passwords?(?:_wo)?|secret_string|secret_key|access_key|app_key|auth_token(?:_wo)?)$", re.I)
 TOKENS = re.compile(r'#[^\n]*|//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z_0-9]*|[^\s]', re.S)
 GLOBAL_ACTIONS = {'ecr:GetAuthorizationToken', 'ssm:UpdateInstanceInformation',
                   'ec2:DescribeVolumes', 'ec2:DescribeSnapshots',
@@ -79,6 +79,14 @@ def validate_plan(plan):
             errors.append(f"{address}: resource outside the reviewed EC2 topology")
         if resource_type == "aws_db_instance" and values.get("publicly_accessible") is not False:
             errors.append(f"{address}: RDS must explicitly remain private")
+        if resource_type == 'aws_elasticache_replication_group':
+            required = {'engine': 'valkey', 'num_cache_clusters': 1, 'cluster_mode': 'disabled',
+                        'automatic_failover_enabled': False, 'multi_az_enabled': False,
+                        'transit_encryption_enabled': True, 'transit_encryption_mode': 'required'}
+            if any(values.get(field) != value for field, value in required.items()) or values.get('at_rest_encryption_enabled') not in {True, 'true'} or len(values.get('user_group_ids') or []) != 1:
+                errors.append(f'{address}: only one authenticated TLS Valkey primary is approved')
+        if resource_type in {'aws_elasticache_cluster', 'aws_elasticache_serverless_cache', 'aws_elasticache_global_replication_group', 'aws_elasticache_user', 'aws_elasticache_user_group'}:
+            errors.append(f'{address}: cache scaling or credential management is outside the optional reference')
         if resource_type in {"aws_security_group", "aws_default_security_group"} and any(values.get(direction) for direction in ["ingress", "egress"]):
             errors.append(f"{address}: inline SG rules are forbidden; use dedicated rule resources")
         if resource_type in {"aws_vpc_security_group_ingress_rule", "aws_vpc_security_group_egress_rule"}:
@@ -89,8 +97,8 @@ def validate_plan(plan):
                 errors.append(f"{address}: only explicit single TCP ports are allowed")
             elif public_source and ports[0] not in {80, 443}:
                 errors.append(f"{address}: CIDR/prefix-list access is limited to HTTP/HTTPS")
-            elif not public_source and (not private_source or ports[0] != 5432):
-                errors.append(f"{address}: private PostgreSQL must reference a security group")
+            elif not public_source and (not private_source or ports[0] not in {5432, 6379}):
+                errors.append(f"{address}: private PostgreSQL/Valkey must reference a security group")
         for name, value in values.items():
             if SECRET_NAMES.search(name) and isinstance(value, str) and value:
                 errors.append(f"{address}: literal sensitive attribute {name} is forbidden")
@@ -109,7 +117,7 @@ def validate_sources(directory):
             def inspect(value):
                 if isinstance(value, dict):
                     for name, child in value.items():
-                        if SECRET_NAMES.search(name) and isinstance(child, str) and child:
+                        if SECRET_NAMES.search(name) and (isinstance(child, str) and child or isinstance(child, list) and any(isinstance(item, str) and item for item in child)):
                             errors.append(f'{label}: literal sensitive attribute {name} is forbidden')
                         inspect(child)
                 elif isinstance(value, list):
@@ -119,7 +127,7 @@ def validate_sources(directory):
                 inspect(json.loads(source))
             except ValueError:
                 errors.append(f'{label}: invalid tfvars JSON')
-        for match in re.finditer(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*=\s*"((?:\\.|[^"\\])*)"', source):
+        for match in re.finditer(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*=\s*(?:\[\s*)?"((?:\\.|[^"\\])*)"', source):
             if SECRET_NAMES.search(match[1]) and match[2] and "${" not in match[2]:
                 errors.append(f"{label}: literal sensitive attribute {match[1]} is forbidden")
         if re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", source):
