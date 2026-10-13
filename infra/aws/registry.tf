@@ -80,7 +80,7 @@ resource "aws_iam_role_policy" "registry_publish" {
       { Sid = "RegistryToken", Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = ["*"] },
       {
         Sid    = "PublishReleaseImages", Effect = "Allow", Resource = sort(values(local.repository_arns))
-        Action = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"]
+        Action = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"]
       },
     ]
   })

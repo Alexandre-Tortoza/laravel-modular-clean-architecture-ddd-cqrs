@@ -18,6 +18,7 @@
             "subject": "",
             "workflow_paths": [
                 ".github/workflows/publish-images.yml",
+                ".github/workflows/immutable-images.yml",
                 ".github/workflows/aws-identity.yml"
             ],
             "environment_node_id": "",

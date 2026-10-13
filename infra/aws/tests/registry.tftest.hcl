@@ -98,7 +98,7 @@ run "exact_immutable_github_subject" {
       jsondecode(aws_iam_role.registry_publisher[0].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:aud"] == "sts.amazonaws.com" &&
       jsondecode(aws_iam_role.registry_publisher[0].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == var.container_registry.publisher.subject &&
       toset(jsondecode(aws_iam_role_policy.registry_publish[0].policy).Statement[1].Resource) == toset(["arn:aws:ecr:fixture-region:123456789012:repository/fixture/php", "arn:aws:ecr:fixture-region:123456789012:repository/fixture/nginx"]) &&
-      toset(jsondecode(aws_iam_role_policy.registry_publish[0].policy).Statement[1].Action) == toset(["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"])
+      toset(jsondecode(aws_iam_role_policy.registry_publish[0].policy).Statement[1].Action) == toset(["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"])
     )
     error_message = "GitHub publication must use exact audience/subject and only upload permissions on the two private repos, without IAM/secret/deletion access."
   }
