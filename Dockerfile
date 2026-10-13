@@ -68,6 +68,8 @@ COPY --from=production-dependencies /app/routes ./routes
 COPY --from=production-dependencies /app/stubs ./stubs
 COPY --from=production-dependencies /app/vendor ./vendor
 COPY --from=assets /app/public ./public
+COPY docker/php/prepare-runtime.php ./docker/php/prepare-runtime.php
+COPY --chmod=0755 docker/php/entrypoint /usr/local/bin/app-entrypoint
 
 RUN find /app -type d -exec chmod 0755 {} + \
     && find /app -type f -exec chmod 0644 {} + \
@@ -78,4 +80,5 @@ RUN find /app -type d -exec chmod 0755 {} + \
 USER www-data:www-data
 EXPOSE 9000
 STOPSIGNAL SIGQUIT
+ENTRYPOINT ["/usr/local/bin/app-entrypoint"]
 CMD ["php-fpm", "--nodaemonize"]
