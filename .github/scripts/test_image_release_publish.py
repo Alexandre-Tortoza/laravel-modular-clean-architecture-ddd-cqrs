@@ -50,6 +50,21 @@ class ImagePromotionTest(unittest.TestCase):
             promote(self.fixture.bundle, self.repositories, registry)
         self.assertEqual((registry.logins, registry.copies), (0, []))
 
+    def test_predecessor_must_remain_recoverable_in_the_exact_registry_before_publication(self):
+        previous = self.fixture.root / 'previous'
+        previous.mkdir()
+        for role in ('php', 'nginx'):
+            self.fixture.oci(previous, role, sha='b' * 40, version='v1.2.2')
+        create_manifest(previous, self.fixture.source, 'b' * 40, 'v1.2.2')
+        create_manifest(self.fixture.bundle, self.fixture.source, self.fixture.sha, self.fixture.version, previous)
+        registry = RegistryDouble()
+        with self.assertRaises(ValueError):
+            promote(self.fixture.bundle, self.repositories, registry, previous)
+        self.assertEqual((registry.logins, registry.copies), (0, []))
+        promote(previous, self.repositories, registry)
+        recovered = promote(self.fixture.bundle, self.repositories, registry, previous)
+        self.assertEqual(set(recovered), {'php', 'nginx'})
+
     def test_rejects_foreign_account_region_or_duplicate_repository(self):
         for arn in [self.repositories['php'], self.repositories['nginx'].replace('123456789012', '999999999999'), self.repositories['nginx'].replace('us-east-1', 'eu-west-1')]:
             with self.subTest(arn=arn), self.assertRaises(ValueError):

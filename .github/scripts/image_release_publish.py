@@ -39,6 +39,11 @@ def publication_plan(manifest, repositories, lookup):
 
 def promote(directory, repositories, registry, previous_directory=None):
     manifest = verify_bundle(directory, previous_directory)
+    previous = manifest['previous']
+    if previous is not None:
+        retained = dict(images=previous['images'], tags=['release-' + previous['source_revision'], previous['version']])
+        if any(not item['exists'] for item in publication_plan(retained, repositories, registry.lookup)):
+            raise ValueError('The approved predecessor must remain published at its exact immutable digests before promoting a new release.')
     plan = publication_plan(manifest, repositories, registry.lookup)
     # Check every immutable tag before any login/write to avoid a known partial conflict.
     if any(not item['exists'] for item in plan):
