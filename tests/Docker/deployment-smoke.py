@@ -63,6 +63,10 @@ def main():
         for name in ('uploads', 'acme', 'tls', 'auth', 'state'):
             (directory / name).mkdir(mode=0o700 if name in ('auth', 'state') else 0o755)
         os.chown(directory / 'uploads', 33, 33)
+        for name in ('private', 'public'):
+            child = directory / 'uploads' / name
+            child.mkdir(mode=0o750)
+            os.chown(child, 33, 33)
         domain = 'deployment.smoke.invalid'
         ca, key = directory / 'ca.pem', directory / 'key.pem'
         command(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=' + domain,
