@@ -7,6 +7,7 @@ on:
       - Dockerfile
       - .dockerignore
       - docker/php/**
+      - docker/frontend-artifact.mjs
       - compose.production.processes.yaml
       - tests/Docker/processes-smoke.sh
       - tests/Docker/queue-runtime.php
@@ -34,6 +35,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Build the PHP runtime
-        run: docker build --tag laravel-php:processes --target runtime .
+        run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --tag laravel-php:processes --target runtime .
       - name: Exercise dedicated queue and scheduler containers
         run: bash tests/Docker/processes-smoke.sh laravel-php:processes
