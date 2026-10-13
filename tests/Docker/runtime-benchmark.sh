@@ -71,6 +71,7 @@ for runtime in fpm octane; do
         test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$revision"
     done
     "${compose[@]}" config --quiet
+    "${compose[@]}" pull pgsql
     startup_begin="$(python -c 'import time; print(time.perf_counter())')"
     started=true
     "${compose[@]}" up --detach --no-build --wait --wait-timeout 90
