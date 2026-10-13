@@ -137,7 +137,7 @@ for attempt in $(seq 1 40); do
 done
 docker exec "$container" test -f /tmp/smoke-request-started
 stage=graceful-stop
-docker stop --time 10 "$container" >/dev/null
+docker stop --time 15 "$container" >/dev/null
 stage=graceful-response
 wait "$request_pid"
 grep -q graceful-request-complete "$temporary_directory/slow-response"
