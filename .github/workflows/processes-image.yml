@@ -1,0 +1,43 @@
+name: Production queue and scheduler
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/php/**
+      - docker/frontend-artifact.mjs
+      - compose.production.processes.yaml
+      - tests/Docker/processes-smoke.sh
+      - tests/Docker/test_process_readiness.py
+      - tests/Docker/queue-runtime.php
+      - .github/workflows/processes-image.yml
+      - composer.json
+      - composer.lock
+      - app/**
+      - bootstrap/**
+      - config/**
+      - database/**
+      - resources/**
+      - routes/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database-processes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the PHP runtime
+        run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --tag laravel-php:processes --target runtime .
+      - name: Distinguish entrypoint wrappers from actual PHP Artisan children
+        run: python3 tests/Docker/test_process_readiness.py --image laravel-php:processes -v
+      - name: Exercise dedicated queue and scheduler containers
+        run: bash tests/Docker/processes-smoke.sh laravel-php:processes

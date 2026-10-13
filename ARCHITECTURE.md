@@ -39,6 +39,8 @@ Exclusive passkey and two-factor migrations are loaded from Identity; exclusive 
 
 ## Adding a module
 
+Follow the [tested practical workflow](docs/modular-development.md) for native generators, a complete small module, explicit seeding and Wayfinder. The example runs in a separate disposable copy; it does not add a business module to the distributed template.
+
 1. Assign table and behavior ownership, then define any real Domain policy or value type. Avoid an empty layer or a model duplicate.
 2. Add one immutable command and dedicated handler per write use case. Put internal persistence and effect ports in `Application/Contracts`; export only integration contracts needed by another module through `Application/Api`.
 3. Implement owned storage, migrations, factories, seeders, and bindings in Infrastructure. Keep existing migrations immutable. Put HTTP validation, routes, response mapping, and middleware in Presentation and register them through the module provider.
@@ -49,4 +51,4 @@ The architecture inspector parses PHP source to discover modules, dependency edg
 
 ## Deferred, non-blocking work
 
-This closing change does not redesign interfaces, add buses or synthetic aggregates, or specialize Teams for an ERP. Further fallback eligibility refinement (including a generic fallback list containing another owner's personal team), imported invitation-role validation, extra leave/removal interleavings, and static analysis of the entire test tree remain separate follow-up work. None is described here as an implemented guarantee. License, project metadata, minimum-version validation, independent-template smoke tests, and release preparation follow the authorized integration of this PR; publication is not performed by setup or build scripts.
+This closing change does not redesign interfaces, add buses or synthetic aggregates, or specialize Teams for an ERP. Further fallback eligibility refinement (including a generic fallback list containing another owner's personal team), imported invitation-role validation, extra leave/removal interleavings, and static analysis of the entire test tree remain separate follow-up work. None is described here as an implemented guarantee. The template includes MIT licensing and starter attribution, generic project metadata, minimum-version validation, independent-template smoke tests and prepared release workflows. Publication and external activation are separate opt-in operations; setup and build scripts do not publish releases.

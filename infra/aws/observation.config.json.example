@@ -1,0 +1,9 @@
+{
+    "environment": "REPLACE_WITH_ENVIRONMENT",
+    "region": "REPLACE_WITH_REGION",
+    "app_url": "https://REPLACE_WITH_APPROVED_DOMAIN",
+    "certificate_authority_file": null,
+    "release_revision": "REPLACE_WITH_APPROVED_FULL_GIT_SHA",
+    "log_group_name": "/template/REPLACE_WITH_ENVIRONMENT/runtime",
+    "log_stream_name": "health"
+}

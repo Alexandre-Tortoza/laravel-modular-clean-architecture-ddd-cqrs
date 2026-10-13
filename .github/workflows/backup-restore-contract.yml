@@ -1,0 +1,38 @@
+name: Disposable backup and recovery rehearsal
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - infra/aws/scripts/restore_plan.py
+      - infra/aws/tests/test_restore_plan.py
+      - tests/Docker/backup-restore-smoke.sh
+      - infra/aws/recovery.md
+      - .github/workflows/backup-restore-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout fixture source without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test safe offline recovery plans
+        run: python3 infra/aws/tests/test_restore_plan.py
+      - name: Restore into new private PostgreSQL and upload fixtures only
+        env:
+          BACKUP_RESTORE_TEST_ACK: disposable-only
+        run: bash tests/Docker/backup-restore-smoke.sh
+      - name: Retain sanitized hash and result evidence only
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backup-restore-evidence
+          path: backup-restore-evidence.json
+          if-no-files-found: error
+          retention-days: 30
