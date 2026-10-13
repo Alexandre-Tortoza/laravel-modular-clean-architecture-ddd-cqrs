@@ -1,6 +1,9 @@
+from io import BytesIO
 import json
 import os
 from pathlib import Path
+import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -85,6 +88,14 @@ class TemplateReleaseTest(unittest.TestCase):
                 self.assertIn(environment['RELEASE_CHANGES'], Path('release-preview/release-notes.md').read_text())
             finally:
                 os.chdir(previous)
+
+    def test_native_source_archive_retains_onboarding_license_and_essential_guides(self):
+        root = Path(__file__).resolve().parents[2]
+        result = subprocess.run(['git', 'archive', '--worktree-attributes', '--format=tar', 'HEAD'], cwd=root, capture_output=True, check=True)
+        with tarfile.open(fileobj=BytesIO(result.stdout)) as archive:
+            entries = set(archive.getnames())
+        required = {'README.md', 'LICENSE', 'docs/development.md', 'docs/modular-development.md', 'docs/deployment.md', 'docs/aws.md', 'docs/releases.md', 'CONTRIBUTING.md', 'SECURITY.md', 'AGENTS.md'}
+        self.assertEqual(required - entries, set(), 'Source archives must preserve onboarding, licensing and operational guides')
 
     def test_rejects_dispatch_from_a_feature_branch_before_remote_access(self):
         with patch.dict(os.environ, {'GITHUB_REF': 'refs/heads/feature'}), patch('template_release.api') as remote:
