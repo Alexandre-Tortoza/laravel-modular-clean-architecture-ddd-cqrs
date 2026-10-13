@@ -41,6 +41,69 @@ LAUNCHER));
             'XDEBUG_MODE' => 'off',
         ];
         $run = fn (array $command) => Process::path($fixture)->env($environment)->timeout(120)->run($command);
+        $ownsCatalogFixture = false;
+        foreach (['Billing', 'Catalog'] as $existingModule) {
+            $existingPath = $fixture.'/app/Modules/'.$existingModule;
+            if (! $files->isDirectory($existingPath)) {
+                $created = $run([PHP_BINARY, 'artisan', 'make:module', $existingModule, '--no-interaction']);
+                expect($created->exitCode())->toBe(0, $created->output().$created->errorOutput());
+                if ($existingModule === 'Catalog') {
+                    $ownsCatalogFixture = true;
+                    $files->put($existingPath.'/routes/web.php', <<<'OWNED_ROUTES'
+<?php
+use Illuminate\Support\Facades\Route;
+Route::middleware('web')->get('/catalog-baseline', fn (): string => 'owned catalog')->name('catalog.baseline');
+OWNED_ROUTES);
+                    $files->put($existingPath.'/database/migrations/2026_01_01_000000_create_catalog_items.php', <<<'OWNED_MIGRATION'
+<?php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+return new class extends Migration {
+    public function up(): void {
+        Schema::create('catalog_items', function (Blueprint $table): void { $table->id(); $table->string('marker'); });
+        DB::table('catalog_items')->insert(['marker' => 'owned']);
+    }
+    public function down(): void { Schema::dropIfExists('catalog_items'); }
+};
+OWNED_MIGRATION);
+                }
+            }
+            expect($files->isFile($existingPath.'/Infrastructure/Providers/'.$existingModule.'ServiceProvider.php'))->toBeTrue();
+        }
+        $files->ensureDirectoryExists($fixture.'/tests/Feature');
+        $files->copy($root.'/tests/Feature/MakeModuleTest.php', $fixture.'/tests/Feature/MakeModuleTest.php');
+        $files->put($fixture.'/fixture-bootstrap.php', str_replace('{{ autoload }}', var_export($root.'/vendor/autoload.php', true), <<<'BOOTSTRAP'
+<?php
+require {{ autoload }};
+$loader = new Composer\Autoload\ClassLoader;
+$loader->addPsr4('App\\', __DIR__.'/app');
+$loader->register(true);
+$_ENV['APP_BASE_PATH'] = __DIR__;
+pest()->extend(Tests\TestCase::class)
+    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+    ->in(__DIR__.'/tests/Feature');
+foreach (['Billing', 'Catalog'] as $module) {
+    $provider = 'App\\Modules\\'.$module.'\\Infrastructure\\Providers\\'.$module.'ServiceProvider';
+    $expected = __DIR__.'/app/Modules/'.$module.'/Infrastructure/Providers/'.$module.'ServiceProvider.php';
+    if ((new ReflectionClass($provider))->getFileName() !== $expected) {
+        throw new RuntimeException('The native application provider must be loaded before generator fixtures.');
+    }
+}
+BOOTSTRAP));
+        $files->put($fixture.'/fixture-tests.xml', '<phpunit bootstrap="'.$fixture.'/fixture-bootstrap.php"><testsuites><testsuite name="Feature"><directory>tests/Feature</directory></testsuite></testsuites></phpunit>');
+        $fixtureTests = Process::path($fixture)->env([...$environment, 'PAO_FORCE' => 'true'])->timeout(120)
+            ->run([PHP_BINARY, $root.'/vendor/bin/pest', '--configuration='.$fixture.'/fixture-tests.xml', '--no-coverage', '--colors=never', $fixture.'/tests/Feature/MakeModuleTest.php']);
+        expect($fixtureTests->exitCode())->toBe(0, $fixtureTests->output().$fixtureTests->errorOutput());
+        $fixtureResult = json_decode($fixtureTests->output(), true, flags: JSON_THROW_ON_ERROR);
+        expect($fixtureResult['tests'])->toBe(26)
+            ->and($fixtureResult['passed'])->toBe(26)
+            ->and($fixtureResult['skipped'] ?? 0)->toBe(0);
+        if ($ownsCatalogFixture) {
+            $ownedDatabase = new PDO('sqlite:'.$fixture.'/database/scaffolding.sqlite');
+            expect($ownedDatabase->query("SELECT count(*) FROM catalog_items WHERE marker = 'owned'")->fetchColumn())->toBe(1);
+        }
         $generated = $run([PHP_BINARY, 'artisan', 'make:module', 'InventoryKit', '--no-interaction']);
         expect($generated->exitCode())->toBe(0, $generated->output().$generated->errorOutput());
         $module = $fixture.'/app/Modules/InventoryKit';
