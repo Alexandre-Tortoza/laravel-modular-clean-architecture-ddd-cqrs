@@ -5,6 +5,14 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 
+use function basename;
+use function dirname;
+use function in_array;
+use function preg_match;
+use function str_replace;
+use function strcasecmp;
+use function strtolower;
+
 class MakeModuleQuery extends Command
 {
     protected $signature = 'make:module-query {module : An existing StudlyCase module} {name : A single StudlyCase query name} {--contract : Create an application contract and an infrastructure implementation} {--test : Create a pending Pest test}';
