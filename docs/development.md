@@ -105,7 +105,15 @@ pgtest test --compact --testsuite=Concurrency
 
 The initial query must return `t`; if it returns `f`, inspect the database rather than resetting it. PostgreSQL tests use separate connections, `pdo_pgsql`, `pcntl` and `posix`; Sail provides these. Concurrency tests commit fixtures across connections and can leave data behind. Do not repeat against a populated test database expecting a pristine run: use a fresh disposable checkout/project/database for a new rehearsal. No command above resets development schema. CI also checks the development persistence marker and that its users/teams stay empty after these tests.
 
-The exact line/branch coverage gate is `COMPOSER_PROCESS_TIMEOUT=0 ./vendor/bin/sail composer coverage` with Xdebug coverage enabled (`SAIL_XDEBUG_MODE=coverage` before starting the runtime). It is expensive and CI runs it on explicit dispatch. Do not weaken coverage or count an ordinary PR's skipped coverage job as a coverage pass.
+For exact line/branch coverage, pass the timeout and Xdebug settings into the container explicitly; a host variable before `sail composer` is not forwarded automatically:
+
+```bash
+docker compose exec -T --user sail \
+    --env COMPOSER_PROCESS_TIMEOUT=0 --env XDEBUG_MODE=coverage \
+    laravel.test composer coverage
+```
+
+Sail's PHP runtime includes Xdebug. This gate is expensive and CI runs it on explicit dispatch. Do not weaken coverage or count an ordinary PR's skipped coverage job as a coverage pass.
 
 ## Optional Redis, independently per purpose
 
