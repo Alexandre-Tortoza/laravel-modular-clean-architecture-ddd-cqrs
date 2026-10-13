@@ -30,8 +30,9 @@ command -v cgi-fcgi >/dev/null
 test "$(docker image inspect --format '{{.Config.User}}' "$image")" != root
 test "$(docker image inspect --format '{{.Config.StopSignal}}' "$image")" = SIGQUIT
 
+application_key="base64:$(openssl rand -base64 32)"
 stage=cli-runtime
-docker run --rm --network none "$image" sh -ec '
+docker run --rm --network none --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid "$image" sh -ec '
     test "$(id -u)" -ne 0
     test ! -w artisan
     test ! -w vendor/autoload.php
@@ -91,13 +92,12 @@ PHP
 chmod 0755 "$temporary_directory"
 chmod 0644 "$temporary_directory/slow.php"
 
-application_key="base64:$(openssl rand -base64 32)"
 stage=fpm-start
 docker run --detach --name "$container" \
     --cap-drop ALL --security-opt no-new-privileges \
     --publish 127.0.0.1::9000 \
     --mount "type=bind,source=$temporary_directory,target=/tmp/image-smoke,readonly" \
-    --env "APP_KEY=$application_key" --env SESSION_DRIVER=file \
+    --env "APP_KEY=$application_key" --env APP_URL=https://template.example.invalid --env SESSION_DRIVER=file \
     "$image" >/dev/null
 port="$(docker port "$container" 9000/tcp | cut -d: -f2)"
 
@@ -122,9 +122,10 @@ stage=login-assets
 request /login >"$temporary_directory/login"
 ! grep -Eq '^Status: [45]' "$temporary_directory/login"
 grep -q '/build/assets/' "$temporary_directory/login"
+grep -qi 'set-cookie:.*secure' "$temporary_directory/login"
 stage=fpm-access-logs
 docker logs "$container" >"$temporary_directory/fpm-logs" 2>&1
-grep -q 'GET /' "$temporary_directory/fpm-logs"
+grep -q ' GET 200 ' "$temporary_directory/fpm-logs"
 
 stage=graceful-shutdown
 request /slow /tmp/image-smoke/slow.php >"$temporary_directory/slow-response" &
