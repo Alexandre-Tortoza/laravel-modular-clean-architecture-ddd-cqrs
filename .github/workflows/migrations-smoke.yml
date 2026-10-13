@@ -1,0 +1,38 @@
+name: Controlled release migrations
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - docker/php/**
+      - compose.production.migrations.yaml
+      - compose.production.smoke.yaml
+      - tests/Docker/migrations-smoke.sh
+      - tests/Docker/migration-consumers.php
+      - tests/Docker/migration-fixtures/**
+      - .github/workflows/migrations-smoke.yml
+      - app/**
+      - bootstrap/**
+      - config/**
+      - database/**
+      - composer.json
+      - composer.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controlled-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the actual release image
+        run: docker build --build-arg "SOURCE_REVISION=$(git rev-parse HEAD)" --target runtime --tag laravel-php:migrations-smoke .
+      - name: Exercise serialization, failure, retries and additive compatibility
+        run: bash tests/Docker/migrations-smoke.sh laravel-php:migrations-smoke "$(git rev-parse HEAD)"
