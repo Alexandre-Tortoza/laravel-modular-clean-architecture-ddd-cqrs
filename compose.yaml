@@ -56,6 +56,20 @@ services:
             retries: 10
             start_period: 10s
             timeout: 5s
+    redis:
+        image: 'redis:8.2.6-alpine@sha256:ea5a07305d6c66f99df5a5ff8d9659e8f6cb598e6e586dc8dd92b7fcd915746e'
+        profiles: ['redis']
+        ports:
+            - '127.0.0.1:${FORWARD_REDIS_PORT:-6379}:6379'
+        networks:
+            - sail
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 5s
+            retries: 10
+            start_period: 5s
+            timeout: 5s
+
 networks:
     sail:
         driver: bridge
