@@ -76,6 +76,8 @@ PHP
     test "$(stat -c %a /app/storage/app/private)" = 750
     test "$(stat -c %a /app/storage/app/private/runtime-smoke.enc)" = 600
 '
+"${compose[@]}" logs >"$temporary_directory/logs"
+grep -q runtime-safeguards-log-smoke "$temporary_directory/logs"
 test "$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/storage/runtime-smoke.enc")" = 404
 
 stage=dependency-outage
@@ -112,7 +114,7 @@ fi
 grep -q 'Mount persistent upload storage' "$temporary_directory/refusal"
 
 stage=secret-free-logs
-"${compose[@]}" logs >"$temporary_directory/logs"
+"${compose[@]}" logs >>"$temporary_directory/logs"
 ! grep -Fq "$application_key" "$temporary_directory/logs"
 ! grep -Fq "$SMOKE_DB_PASSWORD" "$temporary_directory/logs"
 ! grep -Eq 'SQLSTATE|Stack trace|PDOException' "$temporary_directory/logs"

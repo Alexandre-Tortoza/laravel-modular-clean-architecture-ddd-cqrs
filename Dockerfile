@@ -74,6 +74,8 @@ EXPOSE 8080
 STOPSIGNAL SIGQUIT
 ENTRYPOINT ["nginx"]
 CMD ["-g", "daemon off;"]
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+    CMD wget --quiet --spider http://127.0.0.1:8080/up || exit 1
 
 FROM php-base AS runtime
 ARG SOURCE_REVISION

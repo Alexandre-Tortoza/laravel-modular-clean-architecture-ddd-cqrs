@@ -4,6 +4,7 @@ x-process: &process
     image: '${PHP_IMAGE:?Select the immutable PHP image reference}'
     env_file:
         - '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+    volumes: ['app-storage:/app/storage/app']
     restart: unless-stopped
     init: true
     stop_signal: SIGQUIT
@@ -41,3 +42,6 @@ services:
 networks:
     app:
         driver: bridge
+
+volumes:
+    app-storage:

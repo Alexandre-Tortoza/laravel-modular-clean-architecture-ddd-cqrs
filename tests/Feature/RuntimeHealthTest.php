@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 
 test('readiness is stateless and succeeds when its dependencies are available', function () {
     $this->getJson('/ready')
@@ -38,3 +39,12 @@ test('readiness includes the selected cache dependency', function () {
 
     $this->getJson('/ready')->assertStatus(503)->assertExactJson(['status' => 'unavailable']);
 });
+
+test('readiness includes independently selected Redis session and queue dependencies', function (string $setting) {
+    config([$setting => 'redis']);
+    Redis::shouldReceive('connection')
+        ->once()
+        ->andThrow(new RuntimeException('redis-password-secret-canary'));
+
+    $this->getJson('/ready')->assertStatus(503)->assertExactJson(['status' => 'unavailable']);
+})->with(['session.driver', 'queue.default']);
