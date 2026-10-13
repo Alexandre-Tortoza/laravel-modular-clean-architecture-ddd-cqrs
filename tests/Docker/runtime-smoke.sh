@@ -60,7 +60,7 @@ assert json.loads(pathlib.Path(sys.argv[1]).read_text()) == {'status': 'ready'}
 PY
 
 stage=persistent-upload
-"${compose[@]}" exec -T php php <<'PHP'
+"${compose[@]}" exec -T php php >"$temporary_directory/upload-output" 2>&1 <<'PHP'
 <?php
 require '/app/vendor/autoload.php';
 $app = require '/app/bootstrap/app.php';
@@ -77,8 +77,13 @@ PHP
     test "$(stat -c %a /app/storage/app/private/runtime-smoke.enc)" = 600
 '
 "${compose[@]}" logs >"$temporary_directory/logs"
-grep -q runtime-safeguards-log-smoke "$temporary_directory/logs"
-test "$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/storage/runtime-smoke.enc")" = 404
+grep -q runtime-safeguards-log-smoke "$temporary_directory/upload-output"
+cat "$temporary_directory/upload-output" >>"$temporary_directory/logs"
+private_upload_status="$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/storage/runtime-smoke.enc")"
+case "$private_upload_status" in
+    403|404) ;;
+    *) printf 'Private uploads must be inaccessible, received HTTP %s.\n' "$private_upload_status" >&2; exit 1 ;;
+esac
 
 stage=dependency-outage
 "${compose[@]}" stop --timeout 30 pgsql
