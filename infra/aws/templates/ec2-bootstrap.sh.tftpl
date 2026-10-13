@@ -1,0 +1,107 @@
+#!/bin/bash
+set -euo pipefail
+umask 0077
+
+# Public bootstrap only. Never fetch application secrets or start releases here.
+. /etc/os-release
+test "$ID" = ubuntu
+test "$VERSION_ID" = 24.04
+test "$(dpkg --print-architecture)" = '${architecture}'
+systemctl cat snap.amazon-ssm-agent.amazon-ssm-agent.service >/dev/null
+systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends ca-certificates curl util-linux e2fsprogs
+install -d -m 0755 /etc/apt/keyrings
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+echo '1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570  /etc/apt/keyrings/docker.asc' | sha256sum --check --status
+chmod 0644 /etc/apt/keyrings/docker.asc
+cat > /etc/apt/sources.list.d/docker.sources <<'SOURCES'
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: noble
+Components: stable
+Architectures: ${architecture}
+Signed-By: /etc/apt/keyrings/docker.asc
+SOURCES
+chmod 0644 /etc/apt/sources.list.d/docker.sources
+apt-get update
+apt-get install -y --no-install-recommends \
+    'docker-ce=${docker_versions.engine}' 'docker-ce-cli=${docker_versions.engine}' \
+    'containerd.io=${docker_versions.containerd}' 'docker-buildx-plugin=${docker_versions.buildx}' \
+    'docker-compose-plugin=${docker_versions.compose}'
+apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# No login, sudo or Docker group: access to the Docker socket grants root.
+id laravel-runtime >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin laravel-runtime
+install -d -o root -g root -m 0755 /srv/laravel /srv/laravel/releases
+install -d -o root -g root -m 0700 /srv/laravel/runtime
+install -d -o root -g root -m 0750 /srv/laravel/uploads
+install -d -m 0755 /etc/docker /etc/systemd/system/docker.service.d
+cat > /etc/docker/daemon.json <<'DOCKER'
+{"log-driver":"local","log-opts":{"max-size":"10m","max-file":"3"},"live-restore":true}
+DOCKER
+chmod 0644 /etc/docker/daemon.json
+
+cat > /usr/local/sbin/laravel-upload-storage <<'STORAGE'
+#!/bin/bash
+set -euo pipefail
+umask 0077
+expected_serial='${replace(upload_volume_id, "-", "")}'
+device=''
+for attempt in $(seq 1 150); do
+    device=$(lsblk --nodeps --noheadings --output PATH,SERIAL | awk -v serial="$expected_serial" '$2 == serial { print $1 }')
+    if test -n "$device"; then break; fi
+    sleep 2
+done
+test -n "$device"
+test -b "$device"
+# Fail closed on ambiguity, partitions or existing signatures; formatting a new
+# empty volume requires the separate, explicit initialization input.
+test "$(printf '%s\n' "$device" | wc -l)" -eq 1
+test "$(lsblk --noheadings --output TYPE "$device" | wc -l)" -eq 1
+filesystem=$(blkid -s TYPE -o value "$device" || true)
+if test -z "$filesystem"; then
+    test '${initialize_upload_volume}' = true || { echo 'Upload EBS is unformatted; explicit initialization approval is required.' >&2; exit 1; }
+    test -z "$(wipefs --noheadings --output TYPE "$device")"
+    mkfs.ext4 -q "$device"
+    filesystem=ext4
+fi
+test "$filesystem" = ext4
+if mountpoint --quiet /srv/laravel/uploads; then
+    test "$(findmnt --noheadings --output UUID /srv/laravel/uploads)" = "$(blkid -s UUID -o value "$device")"
+else
+    mount -t ext4 -o nodev,nosuid,noexec "$device" /srv/laravel/uploads
+fi
+chown 33:33 /srv/laravel/uploads
+chmod 0750 /srv/laravel/uploads
+install -d -o 33 -g 33 -m 0750 /srv/laravel/uploads/private /srv/laravel/uploads/public
+STORAGE
+chmod 0750 /usr/local/sbin/laravel-upload-storage
+cat > /etc/systemd/system/laravel-upload-storage.service <<'UNIT'
+[Unit]
+Description=Mount the selected retained Laravel upload EBS volume
+After=systemd-udev-settle.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/laravel-upload-storage
+RemainAfterExit=yes
+TimeoutStartSec=330
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/docker.service.d/uploads.conf <<'UNIT'
+[Unit]
+Requires=laravel-upload-storage.service
+After=laravel-upload-storage.service
+UNIT
+systemctl daemon-reload
+systemctl enable laravel-upload-storage.service
+systemctl restart docker
+docker compose version
+echo 'Host bootstrap complete; no application release or secret was deployed.'
