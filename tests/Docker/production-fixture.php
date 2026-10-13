@@ -3,7 +3,9 @@
 use App\Modules\Identity\Application\Api\InitialAccounts;
 use App\Modules\Teams\Application\Api\PersonalTeams;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 
 require '/app/vendor/autoload.php';
 $app = require '/app/bootstrap/app.php';
@@ -63,7 +65,28 @@ if (getenv('SMOKE_ACTION') === 'initialize') {
         'memberships' => DB::table('team_members')->count(),
         'persisted' => $team !== null && DB::table('team_members')->where('team_id', $team->id)->where('user_id', $ownerId)->where('role', 'owner')->exists()
             && DB::table('users')->where('id', $ownerId)->where('current_team_id', $team->id)->exists(),
-        'sessions' => DB::table('sessions')->where('user_id', $ownerId)->exists(),
+        'sessions' => config('session.driver') === 'redis'
+            ? ! DB::table('sessions')->exists()
+            : DB::table('sessions')->where('user_id', $ownerId)->exists(),
+    ];
+} elseif (getenv('SMOKE_ACTION') === 'drivers') {
+    $token = bin2hex(random_bytes(16));
+    Cache::put('smoke-driver-probe', $token, 60);
+    $cacheRoundtrip = Cache::get('smoke-driver-probe') === $token;
+    Cache::forget('smoke-driver-probe');
+    $queue = Queue::connection();
+    $queue->pushRaw(json_encode(['id' => $token, 'attempts' => 0, 'smoke' => $token], JSON_THROW_ON_ERROR), 'smoke-driver-probe');
+    $job = $queue->pop('smoke-driver-probe');
+    $queueRoundtrip = $job !== null && $job->payload()['smoke'] === $token;
+    if ($job !== null) {
+        $job->delete();
+    }
+    $result = [
+        'session' => config('session.driver'),
+        'cache' => config('cache.default'),
+        'queue' => config('queue.default'),
+        'cache_roundtrip' => $cacheRoundtrip,
+        'queue_roundtrip' => $queueRoundtrip,
     ];
 } else {
     throw new RuntimeException('Unknown disposable smoke fixture action.');
