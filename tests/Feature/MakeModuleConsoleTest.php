@@ -53,6 +53,7 @@ test('module console rejects invalid paths names and signatures before writing',
     'unparsed signature text' => [['--signature' => 'example:archive-entries first']],
     'missing required argument after optional' => [['--signature' => 'example:archive-entries {first?} {second}']],
     'duplicate arguments' => [['--signature' => 'example:archive-entries {first} {first}']],
+    'empty option name' => [['--signature' => 'example:archive-entries {--}']],
 ]);
 
 test('module console refuses existing targets and reexecution without changing content', function (string $filename) {
