@@ -1,0 +1,56 @@
+name: Optional FPM and Octane benchmark
+
+on:
+    pull_request:
+        branches: [dev]
+        paths:
+            - '.github/workflows/runtime-benchmark.yml'
+            - 'tests/Docker/runtime-benchmark*'
+            - 'tests/Feature/RuntimeBenchmarkWorkflowTest.php'
+            - 'Dockerfile'
+            - 'docker/nginx/**'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    contracts:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+            - name: Check the opt-in harness syntax
+              run: |
+                  bash -n tests/Docker/runtime-benchmark.sh
+                  sh -n tests/Docker/runtime-benchmark-proxy.sh
+                  python -c 'import ast, pathlib; ast.parse(pathlib.Path("tests/Docker/runtime-benchmark-client.py").read_text())'
+                  PYTHONDONTWRITEBYTECODE=1 python tests/Docker/runtime-benchmark-metrics-test.py
+    benchmark:
+        if: github.event_name == 'workflow_dispatch'
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+            - name: Build the production baseline and isolated experiment
+              run: |
+                  revision="$(git rev-parse HEAD)"
+                  docker build --target runtime --build-arg SOURCE_REVISION="$revision" --tag benchmark-source-php .
+                  docker build --target nginx --build-arg SOURCE_REVISION="$revision" --tag benchmark-nginx .
+                  docker build -f tests/Docker/runtime-benchmark.Dockerfile --target fpm --build-arg PHP_IMAGE=benchmark-source-php --build-arg NGINX_IMAGE=benchmark-nginx --tag benchmark-fpm .
+                  docker build -f tests/Docker/runtime-benchmark.Dockerfile --target octane --build-arg PHP_IMAGE=benchmark-source-php --build-arg NGINX_IMAGE=benchmark-nginx --build-arg SOURCE_REVISION="$revision" --tag benchmark-octane .
+                  docker build -f tests/Docker/runtime-benchmark.Dockerfile --target octane-proxy --build-arg PHP_IMAGE=benchmark-source-php --build-arg NGINX_IMAGE=benchmark-nginx --tag benchmark-octane-proxy .
+            - name: Measure real requests and isolation in disposable environments
+              run: |
+                  bash tests/Docker/runtime-benchmark.sh benchmark-fpm benchmark-nginx benchmark-octane benchmark-octane-proxy "$(git rev-parse HEAD)" "$RUNNER_TEMP/runtime-benchmark"
+            - name: Preserve raw metrics and diagnostics
+              if: always()
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: optional-runtime-benchmark
+                  path: '${{ runner.temp }}/runtime-benchmark'
+                  if-no-files-found: warn
+                  retention-days: 14
