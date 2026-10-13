@@ -193,18 +193,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Composer
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: '8.5'
-          tools: composer:v2
-          coverage: none
-
-      - name: Install Sail from the existing lockfile
+      - name: Bootstrap a clean checkout without host PHP or Composer
         run: |
-          composer install --no-interaction --prefer-dist
-          cp .env.sail.example .env
-          php artisan app:ensure-key --no-interaction
+          test ! -d vendor
+          test ! -e .env
+          lockfiles_before="$(sha256sum composer.lock package-lock.json)"
+          ./sail-bootstrap
+          test -x vendor/bin/sail
+          test "$lockfiles_before" = "$(sha256sum composer.lock package-lock.json)"
           echo "WWWUSER=$(id -u)" >> "$GITHUB_ENV"
           echo "WWWGROUP=$(id -g)" >> "$GITHUB_ENV"
 
@@ -213,6 +209,7 @@ jobs:
           docker compose config --quiet
           ./vendor/bin/sail build
           ./vendor/bin/sail up --detach --wait --wait-timeout 120
+          ./vendor/bin/sail artisan app:ensure-key --no-interaction
 
       - name: Verify versions and available tooling
         run: |
@@ -227,20 +224,50 @@ jobs:
         run: |
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc "SELECT to_regclass('public.migrations') IS NULL")" = t
           ./vendor/bin/sail composer setup
+          ./vendor/bin/sail artisan db:seed --no-interaction
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM users')" = 0
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM teams')" = 0
           environment_before="$(sha256sum .env)"
           docker compose exec -T pgsql psql -U sail -d laravel -v ON_ERROR_STOP=1 -c "CREATE TABLE sail_persistence_probe (id integer PRIMARY KEY); INSERT INTO sail_persistence_probe VALUES (42)"
           ./vendor/bin/sail composer setup
+          ./sail-bootstrap
           test "$environment_before" = "$(sha256sum .env)"
           docker compose down
           ./vendor/bin/sail up --detach --wait --wait-timeout 120
+          test "$environment_before" = "$(sha256sum .env)"
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
           curl --fail --retry 10 --retry-connrefused --retry-delay 2 http://localhost:8000/up
           curl --fail http://localhost:8000/login > /dev/null
 
       - name: Verify application contracts in Sail
         run: |
-          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/SetupKeyTest.php
+          ./vendor/bin/sail test --compact tests/Feature/InfrastructureBaselineTest.php tests/Feature/SetupKeyTest.php tests/Feature/SailBootstrapTest.php
           test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
+
+      - name: Verify PostgreSQL integration and concurrency in the isolated testing database
+        run: |
+          test "$(docker compose exec -T pgsql psql -U sail -d postgres -Atc "SELECT count(*) FROM pg_database WHERE datname = 'testing'")" = 1
+          # Process overrides take precedence over phpunit.xml's SQLite/:memory: defaults.
+          # Only this Sail-created disposable testing database is used by RefreshDatabase.
+          docker compose exec -T --user sail \
+            --env APP_ENV=testing --env DB_CONNECTION=pgsql --env DB_HOST=pgsql \
+            --env DB_PORT=5432 --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
+            laravel.test php artisan migrate --force --no-interaction
+          docker compose exec -T --user sail \
+            --env APP_ENV=testing --env DB_CONNECTION=pgsql --env DB_HOST=pgsql \
+            --env DB_PORT=5432 --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
+            laravel.test php artisan test --compact --testsuite=Integration
+          docker compose exec -T --user sail \
+            --env APP_ENV=testing --env DB_CONNECTION=pgsql --env DB_HOST=pgsql \
+            --env DB_PORT=5432 --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
+            laravel.test php artisan test --compact tests/Feature/Database/DatabaseSeederCompositionTest.php tests/Feature/InfrastructureBaselineTest.php
+          docker compose exec -T --user sail \
+            --env APP_ENV=testing --env DB_CONNECTION=pgsql --env DB_HOST=pgsql \
+            --env DB_PORT=5432 --env DB_DATABASE=testing --env DB_USERNAME=sail --env DB_PASSWORD=sail \
+            laravel.test php artisan test --compact --testsuite=Concurrency
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT id FROM sail_persistence_probe')" = 42
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM users')" = 0
+          test "$(docker compose exec -T pgsql psql -U sail -d laravel -Atc 'SELECT count(*) FROM teams')" = 0
 
       - name: Show container diagnostics on failure
         if: failure()
