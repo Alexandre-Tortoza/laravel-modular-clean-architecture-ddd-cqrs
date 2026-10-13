@@ -1,0 +1,162 @@
+name: Protected EC2 digest deployment
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        type: string
+        required: true
+        description: 'Completed protected immutable-images producer run'
+      source_revision:
+        type: string
+        required: true
+        description: 'Full tested source SHA of the retained images'
+      version:
+        type: string
+        required: true
+        description: 'Stable SemVer recorded in the immutable producer'
+      previous_run_id:
+        type: string
+        description: 'Protected producer of the completed current host release'
+      initial_release:
+        type: boolean
+        default: false
+      environment:
+        type: string
+        required: true
+        description: 'Existing owner-approved deployment environment'
+      role_arn:
+        type: string
+        required: true
+        description: 'Separate owner-approved deployment role'
+      deploy:
+        type: boolean
+        default: false
+        description: 'Explicit owner opt-in; never enabled by push or PR'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ec2-deployment-${{ inputs.environment || 'disabled' }}
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify deployment ordering, failure and target boundaries without AWS
+        run: |
+          python3 -m unittest discover -s infra/aws/tests -p test_deploy_release.py -v
+          python3 -m unittest discover -s .github/scripts -p test_deployment_source.py -v
+
+  prepare:
+    needs: contracts
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy && vars.ENABLE_EC2_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      environment: ${{ steps.identity.outputs.environment }}
+      environment_id: ${{ steps.identity.outputs.environment_id }}
+      environment_node_id: ${{ steps.identity.outputs.environment_node_id }}
+      role_arn: ${{ steps.identity.outputs.role_arn }}
+      aws_region: ${{ steps.identity.outputs.aws_region }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_RUN_ID: ${{ inputs.build_run_id }}
+      RELEASE_REVISION: ${{ inputs.source_revision }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+      RELEASE_INITIAL: ${{ inputs.initial_release }}
+      IDENTITY_ENVIRONMENT: ${{ inputs.environment }}
+      IDENTITY_ROLE_ARN: ${{ inputs.role_arn }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify pre-existing protection before scheduling any environment
+        id: identity
+        run: |
+          python3 .github/scripts/aws_identity_preflight.py --purpose deploy --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$RELEASE_REVISION" --role-arn "$IDENTITY_ROLE_ARN" >"$RUNNER_TEMP/identity.json"
+      - name: Verify exact producer, locks, source gates and recoverable predecessor without credentials
+        run: |
+          initial=()
+          if test "$RELEASE_INITIAL" = true; then initial=(--initial); fi
+          python3 .github/scripts/deployment_source.py prepare --identity "$RUNNER_TEMP/identity.json" \
+            --request "$RUNNER_TEMP/request.json" --directory "$RUNNER_TEMP/retained-release" --run-id "$RELEASE_RUN_ID" \
+            --source-revision "$RELEASE_REVISION" --version "$RELEASE_VERSION" --previous-run-id "$RELEASE_PREVIOUS_RUN_ID" "${initial[@]}"
+
+  deploy:
+    needs: prepare
+    if: needs.prepare.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy && vars.ENABLE_EC2_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_RUN_ID: ${{ inputs.build_run_id }}
+      RELEASE_REVISION: ${{ inputs.source_revision }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+      RELEASE_INITIAL: ${{ inputs.initial_release }}
+      IDENTITY_ENVIRONMENT: ${{ inputs.environment }}
+      IDENTITY_ROLE_ARN: ${{ inputs.role_arn }}
+      APPROVED_ENVIRONMENT_ID: ${{ needs.prepare.outputs.environment_id }}
+      APPROVED_ENVIRONMENT_NODE_ID: ${{ needs.prepare.outputs.environment_node_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Recheck immutable protection and source after human approval before requesting any token
+        run: |
+          umask 0077
+          python3 .github/scripts/aws_identity_preflight.py --purpose deploy --environment "$IDENTITY_ENVIRONMENT" \
+            --source-revision "$RELEASE_REVISION" --role-arn "$IDENTITY_ROLE_ARN" >"$RUNNER_TEMP/expected-identity.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          identity = json.loads((Path(os.environ['RUNNER_TEMP']) / 'expected-identity.json').read_text())
+          if identity['environment_id'] != os.environ['APPROVED_ENVIRONMENT_ID'] or identity['environment_node_id'] != os.environ['APPROVED_ENVIRONMENT_NODE_ID']:
+              raise ValueError('The approved deployment environment changed while awaiting approval.')
+          PY
+          initial=()
+          if test "$RELEASE_INITIAL" = true; then initial=(--initial); fi
+          python3 .github/scripts/deployment_source.py prepare --identity "$RUNNER_TEMP/expected-identity.json" \
+            --request "$RUNNER_TEMP/request.json" --directory "$RUNNER_TEMP/retained-release" --run-id "$RELEASE_RUN_ID" \
+            --source-revision "$RELEASE_REVISION" --version "$RELEASE_VERSION" --previous-run-id "$RELEASE_PREVIOUS_RUN_ID" "${initial[@]}"
+      - name: Verify the exact signed token used for the separate deployment role
+        run: node .github/scripts/verify_github_oidc.mjs "$RUNNER_TEMP/expected-identity.json" --token-file "$RUNNER_TEMP/verified-oidc.jwt"
+      - name: Assume only the reviewed deployment role with that same verified token
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ needs.prepare.outputs.aws_region }}
+          role-to-assume: ${{ needs.prepare.outputs.role_arn }}
+          web-identity-token-file: ${{ runner.temp }}/verified-oidc.jwt
+          role-duration-seconds: 1800
+          role-session-name: controlled-deploy-${{ github.run_id }}
+          unset-current-credentials: true
+          force-skip-oidc: true
+          output-credentials: false
+      - name: Invoke exactly the hash-bound approved SSM document and observe validated public receipt
+        env:
+          IMAGE_DEPLOY_AUTHORIZED: 'true'
+        run: python3 .github/scripts/deployment_source.py execute --identity "$RUNNER_TEMP/expected-identity.json" --request "$RUNNER_TEMP/request.json"
+      - name: Remove verified token even on failure
+        if: always()
+        run: rm -f "$RUNNER_TEMP/verified-oidc.jwt" "$RUNNER_TEMP/expected-identity.json"

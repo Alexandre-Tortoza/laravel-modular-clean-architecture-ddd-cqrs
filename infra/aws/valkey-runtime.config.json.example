@@ -1,0 +1,9 @@
+{
+    "valkey": {
+        "host": "<APPROVED_PRIVATE_PRIMARY_ENDPOINT>.cache.amazonaws.com",
+        "username": "<APPROVED_PASSWORD_AUTHENTICATED_USER>",
+        "cache_store": "database",
+        "session_driver": "database",
+        "queue_connection": "database"
+    }
+}

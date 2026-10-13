@@ -1,0 +1,53 @@
+worker_processes auto;
+pid /tmp/nginx/nginx.pid;
+error_log /dev/stderr warn;
+events {
+    worker_connections 1024;
+}
+http {
+    include /etc/nginx/http.conf;
+    server {
+        listen 127.0.0.1:8080;
+        location = /up { return 200 "Nginx configured\n"; }
+        location / { return 404; }
+    }
+    server {
+        listen 8081 default_server;
+        server_name _;
+        return 444;
+    }
+    server {
+        listen 8081;
+        server_name __TLS_DOMAIN__;
+        location / { return 308 https://__TLS_DOMAIN__$request_uri; }
+        __ACME_LOCATION__
+    }
+    server {
+        listen 8443 ssl default_server;
+        ssl_reject_handshake on;
+        return 421;
+    }
+    server {
+        listen 8443 ssl;
+        server_name __TLS_DOMAIN__;
+        if ($host != "__TLS_DOMAIN__") { return 421; }
+        ssl_certificate /run/tls/current/fullchain.pem;
+        ssl_certificate_key /run/tls/current/privkey.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_session_cache shared:TLS:10m;
+        ssl_session_tickets off;
+        # Inertia preload Link headers include the canonical production hostname.
+        # Keep a bounded 16 KiB response header buffer for the real login page.
+        fastcgi_buffer_size 16k;
+        fastcgi_buffers 8 16k;
+        root /app/public;
+        index index.php;
+        autoindex off;
+        disable_symlinks on;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options nosniff always;
+        # TLS terminates here. Forwarded client assertions never control HTTPS.
+        include /etc/nginx/application.conf;
+    }
+}

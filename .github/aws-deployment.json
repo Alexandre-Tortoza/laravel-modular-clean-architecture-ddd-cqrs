@@ -1,0 +1,12 @@
+{
+    "schema_version": 1,
+    "enabled": false,
+    "environment": "",
+    "role_arn": "",
+    "instance_id": "",
+    "document_arn": "",
+    "document_version": "",
+    "document_sha256": "",
+    "contract_sha256": "",
+    "contract": {}
+}
