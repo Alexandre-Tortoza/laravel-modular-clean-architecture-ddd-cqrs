@@ -93,6 +93,7 @@ COPY --from=production-dependencies /app/stubs ./stubs
 COPY --from=production-dependencies /app/vendor ./vendor
 COPY --from=assets /app/public ./public
 COPY docker/php/prepare-runtime.php ./docker/php/prepare-runtime.php
+COPY docker/php/release-migrate.php ./docker/php/release-migrate.php
 COPY --chmod=0755 docker/php/entrypoint /usr/local/bin/app-entrypoint
 
 RUN find /app -type d -exec chmod 0755 {} + \
