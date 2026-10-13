@@ -1,0 +1,63 @@
+services:
+    php:
+        image: '${SMOKE_PHP_IMAGE:?Build the PHP production image first}'
+        env_file:
+            ['${SMOKE_RUNTIME_ENV_FILE:?Use the disposable smoke runtime file}']
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 30s
+        networks: [app, database]
+    nginx:
+        image: '${SMOKE_NGINX_IMAGE:?Build the Nginx production image first}'
+        depends_on: [php]
+        ports: ['127.0.0.1::8080']
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 30s
+        networks: [app]
+    pgsql:
+        image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+        user: postgres
+        environment:
+            POSTGRES_DB: '${SMOKE_DB_DATABASE:?Use a new disposable database}'
+            POSTGRES_USER: smoke
+            POSTGRES_PASSWORD: '${SMOKE_DB_PASSWORD:?Use an ephemeral password}'
+        volumes: ['database:/var/lib/postgresql/data']
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U smoke -d "$$POSTGRES_DB"']
+            interval: 2s
+            timeout: 5s
+            retries: 30
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        stop_grace_period: 30s
+        networks: [database]
+
+    redis:
+        image: redis:8.2.6-alpine@sha256:ea5a07305d6c66f99df5a5ff8d9659e8f6cb598e6e586dc8dd92b7fcd915746e
+        profiles: [redis]
+        user: redis
+        command: ['redis-server', '--save', '', '--appendonly', 'no']
+        read_only: true
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 2s
+            timeout: 5s
+            retries: 30
+        stop_grace_period: 30s
+        networks: [database]
+
+volumes:
+    database:
+
+networks:
+    app:
+        driver: bridge
+    database:
+        driver: bridge
+        internal: true
