@@ -1,0 +1,46 @@
+name: Nginx production image
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker/**
+      - tests/Docker/nginx-smoke.sh
+      - .github/workflows/nginx-image.yml
+      - composer.json
+      - composer.lock
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - app/**
+      - bootstrap/**
+      - config/**
+      - database/**
+      - public/**
+      - resources/**
+      - routes/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-http-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build PHP and Nginx from the same assets stage
+        run: |
+          docker build --tag laravel-php:smoke .
+          docker build --tag laravel-nginx:smoke --target nginx .
+
+      - name: Exercise HTTP routing and artifact boundaries
+        run: bash tests/Docker/nginx-smoke.sh laravel-php:smoke laravel-nginx:smoke
