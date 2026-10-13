@@ -2,6 +2,8 @@
 
 use App\Modules\Billing\Infrastructure\Providers\BillingServiceProvider;
 use App\Modules\Catalog\Infrastructure\Providers\CatalogServiceProvider;
+use App\Modules\Fulfillment\Infrastructure\Providers\FulfillmentServiceProvider;
+use App\Modules\Ledger\Infrastructure\Providers\LedgerServiceProvider;
 use App\Modules\Shipping\Infrastructure\Providers\ShippingServiceProvider;
 use App\Providers\AppServiceProvider;
 use Illuminate\Filesystem\Filesystem;
@@ -141,4 +143,48 @@ test('make module refuses an existing file at the target module path', function 
     file_put_contents($path, 'existing content');
     $this->artisan('make:module', ['name' => 'Archive'])->assertFailed();
     expect(file_get_contents($path))->toBe('existing content');
+});
+
+test('provider registration targets the returned list before trailing PHP statements', function () {
+    $contents = <<<'PROVIDERS'
+<?php
+return [App\Providers\AppServiceProvider::class];
+$unreachableInstructions = ['preserve'];
+PROVIDERS;
+    file_put_contents($this->moduleSandbox.'/bootstrap/providers.php', $contents);
+    $this->artisan('make:module', ['name' => 'Ledger'])->assertSuccessful();
+    $providers = require $this->moduleSandbox.'/bootstrap/providers.php';
+    expect($providers)->toContain(LedgerServiceProvider::class);
+    expect(file_get_contents($this->moduleSandbox.'/bootstrap/providers.php'))->toContain('$unreachableInstructions = [\'preserve\'];');
+});
+
+test('provider registration ignores a fake return list inside a comment', function () {
+    $contents = <<<'PROVIDERS'
+<?php
+// Documentation example: return [
+return array(App\Providers\AppServiceProvider::class);
+$instructions = [];
+PROVIDERS;
+    file_put_contents($this->moduleSandbox.'/bootstrap/providers.php', $contents);
+    $this->artisan('make:module', ['name' => 'Purchasing'])->assertFailed();
+    expect(is_dir($this->moduleSandbox.'/app/Modules/Purchasing'))->toBeFalse()
+        ->and(file_get_contents($this->moduleSandbox.'/bootstrap/providers.php'))->toBe($contents);
+});
+
+test('provider registration balances nested list brackets', function () {
+    $contents = '<?php return [...[App\\Providers\\AppServiceProvider::class]];';
+    file_put_contents($this->moduleSandbox.'/bootstrap/providers.php', $contents);
+    $this->artisan('make:module', ['name' => 'Fulfillment'])->assertSuccessful();
+    expect(require $this->moduleSandbox.'/bootstrap/providers.php')->toBe([
+        AppServiceProvider::class,
+        FulfillmentServiceProvider::class,
+    ]);
+});
+
+test('provider registration rejects ambiguous multiple return statements without writing', function () {
+    $contents = '<?php function providerExample() { return []; } return [];';
+    file_put_contents($this->moduleSandbox.'/bootstrap/providers.php', $contents);
+    $this->artisan('make:module', ['name' => 'Delivery'])->assertFailed();
+    expect(is_dir($this->moduleSandbox.'/app/Modules/Delivery'))->toBeFalse()
+        ->and(file_get_contents($this->moduleSandbox.'/bootstrap/providers.php'))->toBe($contents);
 });
