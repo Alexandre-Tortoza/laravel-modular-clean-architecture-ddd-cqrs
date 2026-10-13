@@ -1,0 +1,38 @@
+name: Disposable application release cycle
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify shared/production target rejection before Docker execution
+        run: |
+          python3 -m unittest discover -s tests/Docker -p test_release_cycle.py -v
+          bash -n tests/Docker/build-release-cycle.sh
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.38.0
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      - name: Install local OCI transport without registry credentials
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends skopeo
+      - name: Build two local simulated OCI versions including a compatible additive migration
+        run: bash tests/Docker/build-release-cycle.sh
+      - name: Exercise real promotion, native application contracts and explicit recovery
+        run: sudo --preserve-env=RUNNER_TEMP,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS python3 tests/Docker/release-cycle.py
+      - name: Retain only sanitized actual checks, timestamps and immutable identities
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-cycle-evidence
+          path: release-cycle-evidence.json
+          if-no-files-found: error
+          retention-days: 30
