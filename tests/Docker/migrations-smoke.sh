@@ -7,7 +7,7 @@ temporary_directory="$(mktemp -d)"
 project="migrations-smoke-${RANDOM}-${RANDOM}"
 stage=environment
 started=false
-compose=(docker compose -p "$project" -f compose.production.smoke.yaml -f compose.production.migrations.yaml -f "$temporary_directory/migration-network.yaml")
+compose=(docker compose --profile release -p "$project" -f compose.production.smoke.yaml -f compose.production.migrations.yaml -f "$temporary_directory/migration-network.yaml")
 
 cleanup() {
     result=$?
