@@ -7,6 +7,7 @@ on:
       - Dockerfile
       - .dockerignore
       - docker/php/**
+      - docker/frontend-artifact.mjs
       - tests/Docker/image-smoke.sh
       - .github/workflows/php-image.yml
       - composer.json

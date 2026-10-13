@@ -8,6 +8,7 @@ on:
       - .dockerignore
       - docker/**
       - tests/Docker/nginx-smoke.sh
+      - tests/Docker/frontend-artifact.test.mjs
       - .github/workflows/nginx-image.yml
       - composer.json
       - composer.lock
@@ -36,6 +37,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify production artifact packaging failure modes
+        run: node --test tests/Docker/frontend-artifact.test.mjs
 
       - name: Build PHP and Nginx from the same assets stage
         run: |

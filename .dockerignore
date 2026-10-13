@@ -25,6 +25,7 @@
 !stubs/
 !stubs/**
 !docker/
+!docker/frontend-artifact.mjs
 !docker/php/
 !docker/php/**
 !docker/nginx/
