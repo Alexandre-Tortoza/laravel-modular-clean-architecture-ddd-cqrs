@@ -31,6 +31,10 @@ def validate_target(target, identity):
         raise ValueError('Require one concrete EC2 host and numeric document version')
     if not re.fullmatch('[a-f0-9]{64}', target['document_sha256']) or target['contract_sha256'] != contract_hash(target['contract']):
         raise ValueError('Require the exact exported SSM document and Terraform contract hashes')
+    registries = [target['contract'].get(image_role + '_repository', '') for image_role in ('php', 'nginx')]
+    prefix = re.escape(role[1] + '.dkr.ecr.' + identity['aws_region'] + '.amazonaws.com/')
+    if registries[0] == registries[1] or any(not re.fullmatch(prefix + r'[a-z0-9]+(?:[._/-][a-z0-9]+)*', value) for value in registries):
+        raise ValueError('Require distinct private repositories in the exact approved account/region')
     if target['contract'].get('instance_id') != target['instance_id'] or target['contract'].get('aws_region') != identity['aws_region']:
         raise ValueError('The reviewed Terraform host/region differs from the identity/target')
 
