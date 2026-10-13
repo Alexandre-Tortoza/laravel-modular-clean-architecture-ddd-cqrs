@@ -1,0 +1,29 @@
+# Invoke once, explicitly, before promoting a release. The command waits for the
+# PostgreSQL lock and records success; repeating the same immutable revision is safe.
+# Combine under the production project's app network. Never run migrate:fresh,
+# rollback or demonstration seeders here. Schema changes must use expand/contract
+# and retain compatibility with both the candidate N and retained N-1 images.
+services:
+    migration:
+        profiles: [release]
+        image: '${PHP_IMAGE:?Select the approved immutable PHP image reference}'
+        env_file:
+            - '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+        environment:
+            RELEASE_REVISION: '${SOURCE_REVISION:?Select the full tested source SHA}'
+            RELEASE_MIGRATION_LOCK_TIMEOUT: '${RELEASE_MIGRATION_LOCK_TIMEOUT:-60}'
+        command: ['php', 'docker/php/release-migrate.php']
+        restart: 'no'
+        init: true
+        stop_grace_period: 90s
+        cap_drop: [ALL]
+        security_opt: ['no-new-privileges:true']
+        networks: [app]
+        volumes: ['app-storage:/app/storage/app']
+
+volumes:
+    app-storage:
+
+networks:
+    app:
+        driver: bridge
