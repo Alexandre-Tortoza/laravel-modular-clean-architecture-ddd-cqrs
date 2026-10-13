@@ -79,5 +79,20 @@ class PrivateCliBoundary(unittest.TestCase):
         self.assertNotIn('privatefixturecanary', json.dumps(result))
 
 
+class NativeContainerState(unittest.TestCase):
+    def test_stopped_services_are_verified_from_container_state_not_service_name_listing(self):
+        runtime = unittest.mock.Mock()
+        runtime.compose_command.return_value = b'fixture-container\n'
+        runtime.command.return_value = b'[{"State":{"Running":false}}]'
+        self.assertEqual(cycle.service_states(runtime, {}), dict(php=False, nginx=False, worker=False, scheduler=False, pgsql=False))
+        self.assertEqual(runtime.command.call_count, 5)
+
+    def test_running_process_is_preserved_as_running_in_the_native_report(self):
+        runtime = unittest.mock.Mock()
+        runtime.compose_command.return_value = b'fixture-container\n'
+        runtime.command.return_value = b'[{"State":{"Running":true}}]'
+        self.assertTrue(all(cycle.service_states(runtime, {}).values()))
+
+
 if __name__ == '__main__':
     unittest.main()

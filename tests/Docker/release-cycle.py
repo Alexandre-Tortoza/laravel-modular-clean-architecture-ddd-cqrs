@@ -54,6 +54,20 @@ def failure_diagnostics(state, current, candidate):
     return dict(current_matches=completed.get('release') == current, candidate_matches=pending.get('release') == candidate, phase=phase if phase in known_phases else 'unknown')
 
 
+def service_states(runtime, selected):
+    states = {}
+    for service in ('php', 'nginx', 'worker', 'scheduler', 'pgsql'):
+        containers = runtime.compose_command(selected, ['ps', '--all', '--quiet', service]).decode().splitlines()
+        if len(containers) != 1:
+            raise ValueError('The owned cycle requires exactly one container per fixture service')
+        information = json.loads(runtime.command(['docker', 'inspect', containers[0]]))[0]
+        running = information['State']['Running']
+        if not isinstance(running, bool):
+            raise ValueError('Native container running state has an unexpected shape')
+        states[service] = running
+    return states
+
+
 class Browser:
     def __init__(self, runtime, directory):
         self.runtime, self.directory = runtime, directory
@@ -255,8 +269,9 @@ def main():
             print('Readiness failure diagnostics: ' + json.dumps(diagnostics, sort_keys=True))
             if diagnostics != dict(current_matches=True, candidate_matches=True, phase='checking-web-readiness'):
                 raise ValueError('Readiness failure did not retain its exact diagnostic phase')
-            active = runtime.compose_command(b, ['ps', '--status', 'running', '--services']).decode().splitlines()
-            if active:
+            states = service_states(runtime, b)
+            print('Failed-candidate native running states: ' + json.dumps(states, sort_keys=True))
+            if any(states.values()):
                 raise ValueError('Unready candidate or background processes kept running')
             runtime.break_database = False
             runtime.compose_command(b, ['up', '-d', '--wait', '--wait-timeout', '90', 'pgsql'])
