@@ -8,7 +8,8 @@ services:
         profiles: [release]
         image: '${PHP_IMAGE:?Select the approved immutable PHP image reference}'
         env_file:
-            - '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+            - path: '${RUNTIME_ENV_FILE:?Select the private production runtime environment file}'
+              format: raw
         environment:
             RELEASE_REVISION: '${SOURCE_REVISION:?Select the full tested source SHA}'
             RELEASE_MIGRATION_LOCK_TIMEOUT: '${RELEASE_MIGRATION_LOCK_TIMEOUT:-60}'
