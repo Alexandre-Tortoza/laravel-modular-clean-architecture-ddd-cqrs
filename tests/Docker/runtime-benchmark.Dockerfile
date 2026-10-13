@@ -9,7 +9,10 @@ FROM composer:2.10.3@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c4
 FROM dunglas/frankenphp:1.12.7-php8.5.10-bookworm@sha256:59d92e5b7616cdabf6cd9817575ed0555024bf73ac398a57df1320306bc23dd2 AS octane
 RUN install-php-extensions pdo_pgsql pcntl \
     && setcap -r /usr/local/bin/frankenphp \
-    && mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+    && mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=fpm /app /app
 COPY --from=composer-binary /usr/bin/composer /usr/local/bin/composer
@@ -24,6 +27,8 @@ composer require laravel/octane:2.21.0 laminas/laminas-diactoros:3.9.0 symfony/p
 php -r '$before = json_decode(file_get_contents("/tmp/original-composer.lock"), true, flags: JSON_THROW_ON_ERROR)["packages"]; $after = array_column(json_decode(file_get_contents("composer.lock"), true, flags: JSON_THROW_ON_ERROR)["packages"], null, "name"); foreach ($before as $package) { if ($after[$package["name"]] !== $package) { throw new RuntimeException("The experiment changed a baseline dependency: ".$package["name"]); } } $new = array_diff(array_keys($after), array_column($before, "name")); sort($new); if ($new !== ["laminas/laminas-diactoros", "laravel/octane", "symfony/psr-http-message-bridge"]) { throw new RuntimeException("Unexpected experimental dependency."); }'
 php artisan package:discover --no-interaction
 php artisan octane:install --server=frankenphp --no-interaction
+apt-get purge -y unzip
+rm -f /usr/local/bin/composer
 rm -f bootstrap/cache/*.php /tmp/original-composer.lock
 chown -R www-data:www-data storage bootstrap/cache
 find storage bootstrap/cache -type d -exec chmod 0750 {} +
