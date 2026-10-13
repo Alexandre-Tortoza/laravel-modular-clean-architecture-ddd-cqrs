@@ -23,6 +23,7 @@ jobs:
               run: |
                   bash -n tests/Docker/runtime-benchmark.sh
                   python -c 'import ast, pathlib; ast.parse(pathlib.Path("tests/Docker/runtime-benchmark-client.py").read_text())'
+                  PYTHONDONTWRITEBYTECODE=1 python tests/Docker/runtime-benchmark-metrics-test.py
     benchmark:
         if: github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest

@@ -1,0 +1,14 @@
+**
+!docker/
+!docker/php/
+!docker/php/production.ini
+!docker/php/entrypoint
+!tests/
+!tests/Docker/
+!tests/Docker/runtime-benchmark.fpm.conf
+
+**/.env*
+**/auth.json
+**/*.pem
+**/*.key
+**/.git

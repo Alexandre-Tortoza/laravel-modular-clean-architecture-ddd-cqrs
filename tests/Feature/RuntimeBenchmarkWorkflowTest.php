@@ -30,21 +30,16 @@ test('runtime benchmark rejects missing images before allocating disposable reso
         ->and($result->errorOutput())->toBe("Provide FPM, Nginx, Octane and Octane proxy images, source SHA and an output directory.\n");
 });
 
-test('runtime benchmark computes percentiles and throughput from actual sample durations', function () {
-    $result = Process::path(base_path())->env(['PYTHONDONTWRITEBYTECODE' => '1'])->run(['python', '-c', <<<'PYTHON'
-import importlib.util,json
-spec=importlib.util.spec_from_file_location('benchmark','tests/Docker/runtime-benchmark-client.py')
-module=importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-result=module.latency_summary(list(range(1,101)),2)
-print(json.dumps({key:result[key] for key in ['requests','requests_per_second','p50_ms','p95_ms','mean_ms']}))
-PYTHON]);
-    expect($result->exitCode())->toBe(0)
-        ->and(json_decode($result->output(), true, flags: JSON_THROW_ON_ERROR))->toBe([
-            'requests' => 100,
-            'requests_per_second' => 50.0,
-            'p50_ms' => 50,
-            'p95_ms' => 95,
-            'mean_ms' => 50.5,
-        ]);
-});
+test('runtime benchmark rejects invalid limits or source SHA before allocation', function (string $revision, string $requests) {
+    $output = base_path('storage/unallocated-benchmark');
+    expect(file_exists($output))->toBeFalse();
+    $result = Process::path(base_path())->env(['BENCH_REQUESTS' => $requests])->run([
+        'bash', 'tests/Docker/runtime-benchmark.sh', 'fpm', 'nginx', 'octane', 'proxy', $revision, $output,
+    ]);
+    expect($result->exitCode())->toBe(2)
+        ->and($result->errorOutput())->toBe("Use a full source SHA, 32-4096 requests and a new output directory.\n")
+        ->and(file_exists($output))->toBeFalse();
+})->with([
+    'excessive requests' => [str_repeat('a', 40), '4097'],
+    'invalid source revision' => ['invalid', '256'],
+]);

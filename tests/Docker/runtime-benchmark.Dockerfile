@@ -1,5 +1,5 @@
-ARG PHP_IMAGE
-ARG NGINX_IMAGE
+ARG PHP_IMAGE=benchmark-source-php
+ARG NGINX_IMAGE=benchmark-nginx
 FROM ${PHP_IMAGE} AS fpm
 USER root
 COPY tests/Docker/runtime-benchmark.fpm.conf /usr/local/etc/php-fpm.d/zzz-benchmark-workers.conf
