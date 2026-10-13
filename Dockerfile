@@ -36,6 +36,7 @@ COPY . .
 RUN php artisan package:discover --no-interaction
 
 FROM composer-build AS assets
+ARG SOURCE_REVISION
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libatomic1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
@@ -43,8 +44,10 @@ COPY --from=node-binary /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-binary /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node docker/frontend-artifact.mjs "$SOURCE_REVISION" --validate-only \
     && npm ci \
-    && npm run build
+    && npm run build \
+    && node docker/frontend-artifact.mjs "$SOURCE_REVISION"
 
 FROM composer-build AS production-dependencies
 RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
@@ -54,6 +57,8 @@ RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
     && php artisan package:discover --no-interaction
 
 FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94 AS nginx
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=assets /app/public /app/public
 RUN rm -f /etc/nginx/conf.d/default.conf \
@@ -71,6 +76,8 @@ ENTRYPOINT ["nginx"]
 CMD ["-g", "daemon off;"]
 
 FROM php-base AS runtime
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ENV APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr
@@ -80,7 +87,7 @@ COPY --from=production-dependencies /app/app ./app
 COPY --from=production-dependencies /app/bootstrap ./bootstrap
 COPY --from=production-dependencies /app/config ./config
 COPY --from=production-dependencies /app/database ./database
-COPY --from=production-dependencies /app/resources ./resources
+COPY --from=production-dependencies /app/resources/views ./resources/views
 COPY --from=production-dependencies /app/routes ./routes
 COPY --from=production-dependencies /app/stubs ./stubs
 COPY --from=production-dependencies /app/vendor ./vendor
