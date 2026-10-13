@@ -75,6 +75,31 @@ USECASE));
         expect($pendingResult['tests'])->toBe(1)
             ->and($pendingResult['passed'])->toBe(0)
             ->and($pendingResult['skipped'])->toBe(1);
+        $console = $run([PHP_BINARY, 'artisan', 'make:module-command', 'InventoryKit', 'ArchiveEntries', '--signature=inventory-kit:archive-entries {input}', '--no-interaction']);
+        expect($console->exitCode())->toBe(0, $console->output().$console->errorOutput());
+        $listed = $run([PHP_BINARY, 'artisan', 'list', '--format=json']);
+        expect($listed->exitCode())->toBe(0, $listed->output().$listed->errorOutput());
+        $commands = json_decode($listed->output(), true, flags: JSON_THROW_ON_ERROR)['commands'];
+        expect(count(array_filter($commands, fn (array $command): bool => $command['name'] === 'inventory-kit:archive-entries')))->toBe(1);
+        $unimplemented = $run([PHP_BINARY, 'artisan', 'inventory-kit:archive-entries', 'example', '--no-interaction']);
+        expect($unimplemented->exitCode())->toBe(1)
+            ->and($unimplemented->output().$unimplemented->errorOutput())->toContain('Implement delegation to the module Application layer');
+        $consolePath = $module.'/Presentation/Console/ArchiveEntries.php';
+        $consoleSource = $files->get($consolePath);
+        $files->put($consolePath, str_replace([
+            'public function handle(): int',
+            "throw new LogicException('Implement delegation to the module Application layer before executing this command.');",
+        ], [
+            'public function handle(\\App\\Modules\\InventoryKit\\Application\\Commands\\ArchiveEntriesHandler $handler): int',
+            '$handler->handle(new \\App\\Modules\\InventoryKit\\Application\\Commands\\ArchiveEntries); return self::SUCCESS;',
+        ], $consoleSource));
+        $delegated = $run([PHP_BINARY, 'artisan', 'inventory-kit:archive-entries', 'example', '--no-interaction']);
+        expect($delegated->exitCode())->toBe(1)
+            ->and($delegated->output().$delegated->errorOutput())->toContain('Implement ArchiveEntries before executing it.');
+        $files->put($consolePath, $consoleSource);
+        $consoleRerun = $run([PHP_BINARY, 'artisan', 'make:module-command', 'InventoryKit', 'ArchiveEntries', '--no-interaction']);
+        expect($consoleRerun->exitCode())->toBe(1)
+            ->and($files->get($consolePath))->toBe($consoleSource);
         $fixtureDatabaseSeeder = $files->get($fixture.'/database/seeders/DatabaseSeeder.php');
         $generatedSeeder = $run([PHP_BINARY, 'artisan', 'make:module-seeder', 'InventoryKit', 'DemoEntriesSeeder', '--no-interaction']);
         expect($generatedSeeder->exitCode())->toBe(0, $generatedSeeder->output().$generatedSeeder->errorOutput());
