@@ -45,6 +45,7 @@ class FixtureRuntime(RollbackRuntime):
         for role in ('php', 'nginx'):
             if selected[role + '_image'].split('@')[1] != manifest['images'][role]['digest']: raise ValueError('Actual OCI manifest digest differs')
             info = json.loads(self.command(['docker', 'image', 'inspect', bundle['images'][role]]))[0]
+            if info['Id'] != manifest['images'][role]['config_digest']: raise ValueError('Loaded image config differs from verified retained OCI bytes')
             if info['Config']['Labels']['org.opencontainers.image.revision'] != selected['source_revision']: raise ValueError('Loaded source differs')
             if info['Config']['Labels']['org.opencontainers.image.version'] != selected['version']: raise ValueError('Loaded version differs')
             raw = self.command(['docker', 'run', '--rm', '--network', 'none', '--entrypoint', '/bin/cat', bundle['images'][role], '/app/public/build/release.json'])

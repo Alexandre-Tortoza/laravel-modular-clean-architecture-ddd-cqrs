@@ -80,7 +80,7 @@ def rollback(request, store, runtime, clock=lambda: datetime.now(timezone.utc)):
         if hasattr(runtime, 'contract') and runtime.contract != target['contract']: raise ValueError('Recovery runtime must use the retained target contract')
         runtime.pull(selected)
         pending = dict(release=selected, contract=target['contract'], contract_sha256=target['contract_sha256'], schema_policy='expand-contract',
-                       operation='rollback', request_sha256=request_sha, rollback_from=current['release'], started_at=clock().isoformat())
+                       operation='rollback', request_sha256=request_sha, rollback_from=current['release'], recovered_pending=state['pending']['release'] if state['pending'] else None, started_at=clock().isoformat())
         state['pending'] = pending
         store.write(state)
         try:
