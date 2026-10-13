@@ -1,0 +1,35 @@
+name: Disposable retained rollback smoke
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.38.0
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      - name: Install local OCI transport
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends skopeo
+      - name: Build two distinct Git sources once each and retain OCI bytes only in this runner
+        # This selects the helper's disposable predecessor fixture; no protected producer/publication runs.
+        run: GITHUB_EVENT_NAME=pull_request bash .github/scripts/build_immutable_images.sh
+      - name: Exercise actual rollback and failed-promotion recovery with private synthetic inputs
+        run: sudo --preserve-env=RUNNER_TEMP,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS python3 tests/Docker/rollback-smoke.py
+      - name: Upload only the sanitized checks and true manifest digests
+        uses: actions/upload-artifact@cf430e42ca74a028a8a35a384dfe6f7d8b3cc7b7 # v7.0.2
+        with:
+          name: rollback-evidence
+          path: rollback-evidence.json
+          if-no-files-found: error
+          retention-days: 30

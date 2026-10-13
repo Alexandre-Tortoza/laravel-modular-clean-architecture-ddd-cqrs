@@ -66,8 +66,13 @@ run "reviewed_deployment_document_has_bound_runtime_only" {
       local.deployment_document.parameters.Release.allowedPattern == "^[A-Za-z0-9+/=]{1,8192}$" &&
       local.deployment_contract.compose_environment.RUNTIME_ENV_FILE == "/srv/laravel/runtime/application.env" &&
       local.deployment_contract.compose_environment.UPLOAD_DIRECTORY == "/srv/laravel/uploads" &&
+      local.deployment_document.parameters.Operation.default == "deploy" &&
+      local.deployment_document.parameters.Operation.allowedPattern == "^(deploy|rollback)$" &&
+      local.deployment_document.parameters.Operation.interpolationType == "ENV_VAR" &&
+      local.deployment_contract.rollback_runner_sha256 == filesha256("scripts/rollback_release.py") &&
       local.deployment_contract.runner_sha256 == filesha256("scripts/deploy_release.py") &&
       local.deployment_contract.compose_sha256 == filesha256("../../compose.production.release.yaml") &&
+      length(jsonencode(local.deployment_document)) < 65536 &&
       length(local.deployment_document.mainSteps) == 1
     )
     error_message = "Reviewed command must bind the host runner/Compose sources, private env and retained upload paths with safe ENV_VAR input."
