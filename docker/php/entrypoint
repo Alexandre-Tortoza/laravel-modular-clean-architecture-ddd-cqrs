@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+umask 0077
+if ! awk '$5 == "/app/storage/app" && $6 ~ /(^|,)rw(,|$)/ && $0 !~ / - (overlay|tmpfs|ramfs) / { found = 1 } END { exit !found }' /proc/self/mountinfo \
+    || ! test -w /app/storage/app/private || ! test -w /app/storage/app/public; then
+    printf '%s\n' 'Mount persistent upload storage at /app/storage/app with private writable directories before starting the production runtime.' >&2
+    exit 1
+fi
+php /app/docker/php/prepare-runtime.php
+exec "$@"
