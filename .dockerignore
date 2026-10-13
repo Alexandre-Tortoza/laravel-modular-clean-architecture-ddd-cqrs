@@ -27,6 +27,8 @@
 !docker/
 !docker/php/
 !docker/php/**
+!docker/nginx/
+!docker/nginx/**
 
 **/.env*
 **/auth.json
